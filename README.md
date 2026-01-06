@@ -116,6 +116,14 @@ Contributions are welcome! Feel free to:
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**.
 
-**📜 Ghostscript License:** GhostPDF+ v2.0+ bundles Ghostscript 10.06.0, which is licensed under the AGPL. Ghostscript is used as a separate executable (not linked as a library), ensuring license compatibility.
+### 📜 Ghostscript License & Source Offer
+GhostPDF+ bundles **Ghostscript 10.06.0**, which is licensed under the **AGPL**.
+
+In compliance with the AGPL, we provide the following:
+1.  **GhostPDF+ Source:** The full source code for this application is available in this repository.
+2.  **Ghostscript Source:** The source code for the bundled Ghostscript binary (v10.06.0) can be downloaded from the official Artifex repository or archives:
+    *   [Ghostscript Source Code (Artifex)](https://github.com/ArtifexSoftware/ghostpdl-downloads/releases)
+
+By using this software, you agree to the terms of the AGPLv3.
