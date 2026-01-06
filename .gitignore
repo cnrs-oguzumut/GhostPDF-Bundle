@@ -7,3 +7,4 @@ ghostscript-bundle/
 *.zip
 test_blank.pdf
 .env
+build-notarized.sh
