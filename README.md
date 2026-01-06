@@ -1,7 +1,7 @@
 # GhostPDF+ - PDF Compressor for macOS
 
 <p align="center">
-  <img src="../assets/app-preview.png" alt="GhostPDF+ Screenshot" width="450">
+  <img src="./app-preview.png" alt="GhostPDF+ Screenshot" width="450">
 </p>
 
 A modern, lightweight PDF compressor and toolkit for macOS, powered by Ghostscript.
@@ -40,16 +40,29 @@ A modern, lightweight PDF compressor and toolkit for macOS, powered by Ghostscri
 
 ## Download
 
-👉 **[Download GhostPDF+.dmg (Ko-fi)](https://ko-fi.com/s/bd1e3fd34d)**
+Choose the version that fits your Mac:
 
-> **✨ NEW in v2.0:** Ghostscript 10.06.0 is now **bundled** with GhostPDF+! No separate installation required.
+1.  **[Download Free Version (v1.5)](https://ko-fi.com/s/bd1e3fd34d)**
+    *   *Best for Intel & Apple Silicon Macs (macOS 11+)*
+    *   *Requires manual Ghostscript installation*
+
+2.  **[Download Pro Bundle (v2.0)](https://ko-fi.com/s/c0f340b969)**
+    *   *Best for Apple Silicon Macs (macOS 13+)*
+    *   ✨ **NEW:** Ghostscript 10.06.0 is **bundled**! No separate installation required. Just drag & drop to run.
 
 ## Installation
 
-1. Download **GhostPDF+.dmg** from [Ko-fi](https://ko-fi.com/s/bd1e3fd34d)
+### For Pro Bundle (v2.0)
+1. Download **GhostPDF+ Bundle**
 2. Open the DMG
 3. Drag GhostPDF+ to your Applications folder
 4. Done!
+
+### For Free Version (v1.5)
+You must install Ghostscript first:
+1. Open Terminal
+2. Run: `brew install ghostscript`
+3. Download and Run GhostPDF+
 
 > **📦 Note:** GhostPDF+ v2.0+ includes Ghostscript binaries (AGPL license). The app is ~40MB larger but requires no external dependencies.
 
