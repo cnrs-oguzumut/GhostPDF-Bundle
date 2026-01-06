@@ -7,9 +7,15 @@ echo "Preparing Ghostscript for Bundling"
 echo "========================================="
 
 # Check if Ghostscript is installed via Homebrew
+# Check if Ghostscript is installed via Homebrew
 if ! command -v brew &> /dev/null; then
-    echo "Error: Homebrew is not installed. Please install Homebrew first."
-    exit 1
+    if [ -d "ghostscript-bundle/bin" ] && [ -f "ghostscript-bundle/bin/gs" ]; then
+        echo "Homebrew not found, but valid ghostscript-bundle exists. Using existing bundle."
+        exit 0
+    else
+        echo "Error: Homebrew is not installed and no bundle exists. Please install Homebrew first."
+        exit 1
+    fi
 fi
 
 # Install Ghostscript if not already installed

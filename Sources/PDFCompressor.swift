@@ -70,8 +70,16 @@ class PDFCompressor {
         
         // Set GS_LIB environment variable for bundled Ghostscript
         if let resourcePath = Bundle.main.resourcePath {
-            let gsLibPath = "\(resourcePath)/ghostscript/share/ghostscript/10.06.0/Resource:\(resourcePath)/ghostscript/share/ghostscript/10.06.0/lib"
-            task.environment = ProcessInfo.processInfo.environment.merging(["GS_LIB": gsLibPath]) { (_, new) in new }
+            let gsBase = "\(resourcePath)/ghostscript/share/ghostscript"
+            // Dynamically find the version directory (e.g. "10.06.0")
+            if let items = try? FileManager.default.contentsOfDirectory(atPath: gsBase),
+               let versionDir = items.first(where: { $0.range(of: "^\\d+\\.\\d+(\\.\\d+)?$", options: .regularExpression) != nil }) {
+                
+                let baseVer = "\(gsBase)/\(versionDir)"
+                // Include Init, lib, flags, fonts. Critical: Resource/Init is where gs_init.ps lives.
+                let gsLibPath = "\(baseVer)/Resource/Init:\(baseVer)/lib:\(baseVer)/fonts"
+                task.environment = ProcessInfo.processInfo.environment.merging(["GS_LIB": gsLibPath]) { (_, new) in new }
+            }
         }
         
         let pipe = Pipe()

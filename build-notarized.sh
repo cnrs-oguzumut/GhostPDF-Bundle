@@ -5,11 +5,19 @@ set -e
 # Configuration
 APP_NAME="GhostPDF+"
 BUNDLE_ID="com.ghostpdf.app"
-VERSION="2.0.0"
+VERSION="2.0.1"
 BUILD_NUMBER="1"
 TEAM_ID="UM63FN2P72"
-APPLE_ID="laletaneri@gmail.com"
-APP_PASSWORD="pcfl-wnws-xsch-mmdh"
+
+# Load secrets from .env if present
+if [ -f .env ]; then
+    export $(cat .env | xargs)
+fi
+
+if [ -z "$APPLE_ID" ] || [ -z "$APP_PASSWORD" ]; then
+    echo "Error: APPLE_ID and APP_PASSWORD must be set (env vars or .env file)"
+    exit 1
+fi
 
 # Developer ID signing identity (for notarization, NOT App Store)
 SIGNING_IDENTITY="Developer ID Application: Lale Taneri (UM63FN2P72)"
