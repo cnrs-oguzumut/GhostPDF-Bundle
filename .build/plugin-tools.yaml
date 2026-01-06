@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "GhostPDF+-arm64-apple-macosx26.0-release.exe": ["<GhostPDF+-arm64-apple-macosx26.0-release.exe>"]
+  "GhostPDF+-arm64-apple-macosx26.0-release.module": ["<GhostPDF+-arm64-apple-macosx26.0-release.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<GhostPDF+-arm64-apple-macosx26.0-release.exe>","<GhostPDF+-arm64-apple-macosx26.0-release.module>"]
+  "test": ["<GhostPDF+-arm64-apple-macosx26.0-release.exe>","<GhostPDF+-arm64-apple-macosx26.0-release.module>"]
+default: "main"
+nodes:
+  "/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ComparisonView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/CompressionPresets.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/NanoPDFApp.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ThumbnailsView.swift.o"]
+    outputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+.product/Objects.LinkFileList"
+
+  "/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ComparisonView.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/CompressionPresets.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/NanoPDFApp.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ThumbnailsView.swift"]
+    outputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/sources"]
+    description: "Write auxiliary file /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/sources"
+
+  "/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+
+  "<GhostPDF+-arm64-apple-macosx26.0-release.exe>":
+    tool: phony
+    inputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+"]
+    outputs: ["<GhostPDF+-arm64-apple-macosx26.0-release.exe>"]
+
+  "<GhostPDF+-arm64-apple-macosx26.0-release.module>":
+    tool: phony
+    inputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ComparisonView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/CompressionPresets.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/NanoPDFApp.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ThumbnailsView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/Modules/GhostPDF_.swiftmodule"]
+    outputs: ["<GhostPDF+-arm64-apple-macosx26.0-release.module>"]
+
+  "C.GhostPDF+-arm64-apple-macosx26.0-release.exe":
+    tool: shell
+    inputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ComparisonView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/CompressionPresets.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/NanoPDFApp.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ThumbnailsView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+.product/Objects.LinkFileList"]
+    outputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+"]
+    description: "Linking ./.build/arm64-apple-macosx/release/GhostPDF+"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release","-o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+","-module-name","GhostPDF_","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_GhostPDF__main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF+.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.GhostPDF+-arm64-apple-macosx26.0-release.module":
+    tool: shell
+    inputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ComparisonView.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/CompressionPresets.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/NanoPDFApp.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ThumbnailsView.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/sources"]
+    outputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ComparisonView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/CompressionPresets.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/NanoPDFApp.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ThumbnailsView.swift.o","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/Modules/GhostPDF_.swiftmodule"]
+    description: "Compiling Swift Module 'GhostPDF_' (6 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","GhostPDF_","-emit-dependencies","-emit-module","-emit-module-path","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/Modules/GhostPDF_.swiftmodule","-output-file-map","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/output-file-map.json","-whole-module-optimization","-num-threads","10","-c","@/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/sources","-I","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx13.0","-whole-module-optimization","-num-threads","10","-serialize-diagnostics","-O","-j10","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","GhostPDF__main","-color-diagnostics","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","nanopdf_complete"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Package.swift","/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

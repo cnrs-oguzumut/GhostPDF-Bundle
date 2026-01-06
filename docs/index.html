@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostPDF - Fast, Private PDF Compression for macOS</title>
+    <meta name="description"
+        content="Compress PDFs locally on your Mac. 100% offline, no uploads, no subscriptions. Powered by Ghostscript for maximum quality and control.">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="GhostPDF for macOS">
+    <meta name="twitter:description" content="Shrink PDFs, not privacy. Free, offline, and native.">
+    <meta name="twitter:image" content="./app-preview.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+
+<body class="bg-white text-gray-900 antialiased">
+
+    <!-- Navigation -->
+    <nav class="w-full py-5 px-6 max-w-6xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <img src="./icon.png" class="w-8 h-8 rounded-lg shadow-sm" alt="GhostPDF Logo">
+            <span class="text-xl font-bold tracking-tight">GhostPDF</span>
+        </div>
+        <div class="flex items-center gap-6">
+            <a href="#features" class="text-sm font-medium text-gray-600 hover:text-gray-900 transition">Features</a>
+            <a href="#download" class="text-sm font-medium text-gray-600 hover:text-gray-900 transition">Download</a>
+            <a href="https://cnrs-oguzumut.github.io/scientific-profile/"
+                class="text-sm font-medium text-gray-500 hover:text-gray-900 transition">About</a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <header class="max-w-5xl mx-auto px-6 pt-16 pb-24 text-center">
+        <div
+            class="inline-flex items-center gap-2 px-4 py-2 mb-8 text-sm font-medium text-gray-700 bg-gray-100 rounded-full">
+            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+            Version 1.2 — Native macOS App
+        </div>
+
+        <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-6 leading-[1.1]">
+            Compress PDFs locally.<br>
+            <span class="gradient-text">Keep your data private.</span>
+        </h1>
+
+        <p class="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
+            The last PDF compressor you'll ever need. A lightweight macOS app that shrinks your files without uploading
+            them anywhere.
+            Works offline using the industry-standard Ghostscript engine for superior compression results.
+        </p>
+
+        <div id="download" class="flex flex-col sm:flex-row justify-center items-center gap-4">
+            <a href="https://ko-fi.com/s/bd1e3fd34d"
+                class="px-8 py-4 gradient-bg text-white font-semibold rounded-xl text-lg hover:opacity-90 transition shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transform hover:-translate-y-0.5">
+                Download Free
+            </a>
+        </div>
+
+        <p class="mt-6 text-sm text-gray-500">macOS 11.0+ • Apple Silicon & Intel</p>
+    </header>
+
+    <!-- App Preview -->
+    <div class="max-w-4xl mx-auto px-6 mb-32">
+        <div
+            class="relative rounded-2xl shadow-2xl overflow-hidden border border-gray-200 bg-gradient-to-b from-gray-50 to-gray-100">
+            <div class="absolute inset-0 bg-gradient-to-tr from-blue-500/5 to-purple-500/5"></div>
+            <img src="./app-preview.png"
+                onerror="this.parentElement.innerHTML='<div class=\'flex items-center justify-center h-96 text-gray-400\'><p>App screenshot</p></div>'"
+                class="w-full relative z-10" alt="GhostPDF App Interface">
+        </div>
+    </div>
+
+    <!-- Features -->
+    <section id="features" class="py-24 bg-gray-50">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">Why GhostPDF?</h2>
+                <p class="text-gray-600 max-w-xl mx-auto">Built for researchers, professionals, and anyone who cares
+                    about privacy.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-2xl mb-5">🔒
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">100% Offline</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        Your files never leave your Mac. No uploads, no cloud processing, no tracking. Perfect for
+                        sensitive documents.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-2xl mb-5">👻
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Powered by Ghostscript</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        Uses Ghostscript, the industry-standard PDF engine trusted by professionals worldwide. Superior
+                        compression, advanced control, and professional-grade results.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center text-2xl mb-5">🔐
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Password Support</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        Seamlessly handles password-protected PDFs. The app prompts for passwords when needed,
+                        supporting batch processing of encrypted documents.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-2xl mb-5">🎯
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Simple & Powerful</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        One-click presets for quick compression. Pro mode for fine-tuned control. Drag, drop, done.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-2xl mb-5">☑️
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Selective Processing</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        Choose exactly which files to process with checkboxes. Skip files, delete individuals, and
+                        compress only what you need.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-2xl mb-5">📦
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Batch Processing</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        Process hundreds of files at once. Real-time progress tracking for every file in your batch.
+                    </p>
+                </div>
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center text-2xl mb-5">🔓
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Decrypt & Unlock</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        Forgot a password? Need to edit a restricted file? Instantly remove owner passwords and unlock
+                        full access to your documents.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center text-2xl mb-5">🔧
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">PDF Repair</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        Automatic recovery for corrupted or damaged PDFs. Rebuilds file structures to salvage unreadable
+                        documents.
+                    </p>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-cyan-100 rounded-xl flex items-center justify-center text-2xl mb-5">↕️
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Visual Reorder</h3>
+                    <p class="text-gray-600 leading-relaxed">
+                        The new Drag-and-Drop interface makes organizing pages effortless. See instant thumbnails as you
+                        rearrange your document.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="py-24">
+        <div class="max-w-4xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">Industry Standard Compression</h2>
+                <p class="text-gray-600">GhostPDF harnesses the power of Ghostscript for professional-grade results.</p>
+            </div>
+
+            <div
+                class="max-w-3xl mx-auto p-8 rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100/50 border border-purple-100">
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="text-2xl">👻</span>
+                    <h3 class="text-lg font-bold">Ghostscript Engine</h3>
+                </div>
+                <p class="text-gray-700 mb-6">
+                    We've chosen Ghostscript as our exclusive compression engine because it offers superior control and
+                    quality compared to native system tools. It enables:
+                </p>
+                <div class="grid sm:grid-cols-2 gap-4">
+                    <ul class="text-sm text-gray-600 space-y-3">
+                        <li class="flex items-center gap-2"><span class="text-purple-500">✓</span> Precise DPI control
+                        </li>
+                        <li class="flex items-center gap-2"><span class="text-purple-500">✓</span> Superior compression
+                            ratios</li>
+                        <li class="flex items-center gap-2"><span class="text-purple-500">✓</span> Reliable standard
+                            compliance</li>
+                    </ul>
+                    <ul class="text-sm text-gray-600 space-y-3">
+                        <li class="flex items-center gap-2"><span class="text-purple-500">✓</span> Advanced grayscale
+                            conversion</li>
+                        <li class="flex items-center gap-2"><span class="text-purple-500">✓</span> Smart font subsetting
+                        </li>
+                        <li class="flex items-center gap-2"><span class="text-purple-500">✓</span> Metadata preservation
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mt-8 p-4 bg-gray-100 rounded-xl text-center">
+                <p class="text-sm text-gray-600">
+                    <span class="font-medium">Optional:</span> Install Ghostscript via Homebrew:
+                    <code class="bg-white px-2 py-1 rounded text-xs ml-1">brew install ghostscript</code>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pro Features -->
+    <section class="py-24 bg-gray-50">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">Pro Features</h2>
+                <p class="text-gray-600">Advanced controls for professionals who need precise output.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <h3 class="font-bold mb-2">🎨 Color Management</h3>
+                    <p class="text-sm text-gray-600">Convert to Grayscale or Monochrome. Set custom DPI for color, gray,
+                        and mono images independently.</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <h3 class="font-bold mb-2">🔤 Font Optimization</h3>
+                    <p class="text-sm text-gray-600">Subsetting embeds only used characters to save space. Option to
+                        fully embed or compress fonts.</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <h3 class="font-bold mb-2">🛠️ Advanced Options</h3>
+                    <p class="text-sm text-gray-600">Remove metadata, detect duplicate images, and use ASCII85 encoding
+                        for compatibility.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PDF Tools -->
+    <section class="py-24">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">More Than Just Compression</h2>
+                <p class="text-gray-600">Powerful tools included with GhostPDF.</p>
+            </div>
+
+            <!-- Security Suite -->
+            <div class="text-center mb-8 mt-16">
+                <h3 class="text-xl font-bold text-gray-400 uppercase tracking-widest text-xs">Security Suite</h3>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-red-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        🔐</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Encrypt PDF</h3>
+                        <p class="text-gray-600 text-sm mb-4">Password-protect PDFs with industry-standard encryption.
+                            Control printing and copying.</p>
+                        <span class="text-xs font-semibold text-red-600 bg-red-50 px-2 py-1 rounded">Protection</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-green-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        🔓</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Decrypt PDF</h3>
+                        <p class="text-gray-600 text-sm mb-4">Remove passwords from protected files instantly (password
+                            required). Unlocks full access.</p>
+                        <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">Unlock</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-yellow-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        💧</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Add Watermark</h3>
+                        <p class="text-gray-600 text-sm mb-4">Apply custom text watermarks. Control opacity, rotation,
+                            and placement for branding.</p>
+                        <span
+                            class="text-xs font-semibold text-yellow-600 bg-yellow-50 px-2 py-1 rounded">Branding</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page Management -->
+            <div class="text-center mb-8 mt-16">
+                <h3 class="text-xl font-bold text-gray-400 uppercase tracking-widest text-xs">Page Management</h3>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-blue-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        📑</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Merge PDFs</h3>
+                        <p class="text-gray-600 text-sm mb-4">Combine multiple files into one document. Perfect for
+                            reports and compilations.</p>
+                        <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">Combine</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-orange-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        ↕️</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Reorder Pages</h3>
+                        <p class="text-gray-600 text-sm mb-4">Drag-and-drop page manipulation. Visually rearrange pages
+                            with instant thumbnail previews.</p>
+                        <span class="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded">Visual</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-purple-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        ✂️</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Split & Extract</h3>
+                        <p class="text-gray-600 text-sm mb-4">Split files apart or extract specific pages (e.g., '1, 3,
+                            5') into new documents.</p>
+                        <span
+                            class="text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-1 rounded">Selection</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Tools -->
+            <div class="text-center mb-8 mt-16">
+                <h3 class="text-xl font-bold text-gray-400 uppercase tracking-widest text-xs">Content Tools</h3>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-pink-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-pink-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        🔄</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Rotate & Delete</h3>
+                        <p class="text-gray-600 text-sm mb-4">Fix orientation issues or permanently remove unwanted
+                            pages from any PDF.</p>
+                        <span class="text-xs font-semibold text-pink-600 bg-pink-50 px-2 py-1 rounded">Edit</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-cyan-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-cyan-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        📏</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Resize to A4</h3>
+                        <p class="text-gray-600 text-sm mb-4">Standardize mixed-size documents. Scales all pages to fit
+                            standard A4 paper size.</p>
+                        <span class="text-xs font-semibold text-cyan-600 bg-cyan-50 px-2 py-1 rounded">Format</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-indigo-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        🖼️</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">PDF Rasterizer</h3>
+                        <p class="text-gray-600 text-sm mb-4">Convert pages to flat images. Prevents copying/editing of
+                            text and vectors.</p>
+                        <span
+                            class="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">Security</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced & Extraction -->
+            <div class="text-center mb-8 mt-16">
+                <h3 class="text-xl font-bold text-gray-400 uppercase tracking-widest text-xs">Advanced & Extraction</h3>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-teal-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        🔧</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">PDF Repair</h3>
+                        <p class="text-gray-600 text-sm mb-4">Rebuild corrupted file structures. Salvage unreadable PDFs
+                            automatically.</p>
+                        <span class="text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-1 rounded">Recovery</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-slate-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        🗄️</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Convert to PDF/A</h3>
+                        <p class="text-gray-600 text-sm mb-4">Archival standard (PDF/A-2b). Ensure long-term
+                            preservation and compliance.</p>
+                        <span class="text-xs font-semibold text-slate-600 bg-slate-50 px-2 py-1 rounded">ISO
+                            Standard</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 p-6 rounded-2xl border border-gray-100 hover:border-rose-100 transition group">
+                    <div
+                        class="w-12 h-12 bg-rose-50 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                        📸</div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Image Extractor</h3>
+                        <p class="text-gray-600 text-sm mb-4">Save pages as high-quality JPEG/PNG images or extract
+                            original embedded photos without re-compression.</p>
+                        <span class="text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-1 rounded">Assets</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ghostscript Installation -->
+            <div
+                class="max-w-4xl mx-auto mt-16 bg-gradient-to-br from-purple-50 to-blue-50 rounded-2xl p-8 border border-purple-100">
+                <h3 class="text-2xl font-bold mb-4 text-center">📦 Installing Ghostscript</h3>
+                <p class="text-gray-600 text-center mb-6">GhostPDF requires Ghostscript, the industry-standard PDF
+                    engine. Install via your preferred package manager:</p>
+
+                <div class="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+                    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <h4 class="font-bold text-lg mb-3">🍺 Homebrew (Recommended)</h4>
+                        <code
+                            class="block bg-gray-900 text-green-400 p-3 rounded-lg text-sm mb-3 font-mono">brew install ghostscript</code>
+                        <p class="text-sm text-gray-600">Most popular method. Automatically keeps Ghostscript updated.
+                            <a href="https://brew.sh" target="_blank" class="text-blue-600 hover:underline">Install
+                                Homebrew first</a> if you don't have it.
+                        </p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <h4 class="font-bold text-lg mb-3">⚓ MacPorts</h4>
+                        <code
+                            class="block bg-gray-900 text-green-400 p-3 rounded-lg text-sm mb-3 font-mono">sudo port install ghostscript</code>
+                        <p class="text-sm text-gray-600">For <a href="https://www.macports.org" target="_blank"
+                                class="text-blue-600 hover:underline">MacPorts</a> users. Alternative package manager
+                            with excellent macOS integration.</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-white/50 rounded-xl p-4 border border-purple-200">
+                    <p class="text-center text-sm text-gray-600">
+                        <strong>Note:</strong> Ghostscript doesn't provide pre-built macOS packages. Package managers
+                        handle compilation and dependencies automatically.
+                    </p>
+                </div>
+
+                <p class="text-center text-sm text-gray-500 mt-4">💡 After installation, restart GhostPDF to detect
+                    Ghostscript automatically.</p>
+            </div>
+
+            <!-- Comparison -->
+            <section class="py-24 bg-white border-t border-gray-100">
+                <div class="max-w-4xl mx-auto px-6">
+                    <div class="text-center mb-16">
+                        <h2 class="text-3xl font-bold mb-4">How We Compare</h2>
+                        <p class="text-gray-600">Why thousands choose GhostPDF+.</p>
+                    </div>
+                    <div class="overflow-x-auto rounded-2xl border border-gray-100 shadow-sm">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-100">
+                                    <th class="py-4 px-6 font-bold text-gray-900">Feature</th>
+                                    <th class="py-4 px-6 font-bold text-indigo-600 bg-indigo-50/50">GhostPDF+</th>
+                                    <th class="py-4 px-6 font-bold text-gray-500">Adobe Acrobat</th>
+                                    <th class="py-4 px-6 font-bold text-gray-500">PDF Squeezer</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm divide-y divide-gray-100">
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Price</td>
+                                    <td class="py-4 px-6 font-bold text-green-600 bg-indigo-50/30">Free</td>
+                                    <td class="py-4 px-6 text-gray-600">$15/mo</td>
+                                    <td class="py-4 px-6 text-gray-600">€35</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Open Source</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Native SwiftUI</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Pro Controls</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">PDF Tools (Split/Merge)</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Visual Page Reordering</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Page Numbers</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Watermarks</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Encryption</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Decrypt / Unlock</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">PDF/A & Repair</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">No Subscription</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-red-500">❌</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Lightweight</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❌</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Native Image Extraction</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-gray-400">❓</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-4 px-6 font-medium text-gray-900">Notarized</td>
+                                    <td class="py-4 px-6 text-green-500 bg-indigo-50/30">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                    <td class="py-4 px-6 text-green-500">✅</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CTA -->
+            <section class="py-24 bg-gray-900">
+                <div class="max-w-3xl mx-auto px-6 text-center">
+                    <h2 class="text-3xl font-bold text-white mb-4">Ready to compress?</h2>
+                    <p class="text-gray-400 mb-8">Free to download. No account required. No strings attached.</p>
+                    <a href="https://ko-fi.com/s/bd1e3fd34d"
+                        class="inline-block px-8 py-4 bg-white text-gray-900 font-semibold rounded-xl text-lg hover:bg-gray-100 transition">
+                        Download GhostPDF
+                    </a>
+                </div>
+            </section>
+
+            <!-- Privacy Policy -->
+            <section id="privacy" class="py-16 bg-gray-50 border-t border-gray-100">
+                <div class="max-w-3xl mx-auto px-6">
+                    <h2 class="text-2xl font-bold mb-6">Privacy Policy</h2>
+                    <div class="prose text-gray-600 space-y-4">
+                        <p><strong>Last updated:</strong> December 2025</p>
+                        <p>GhostPDF is designed with privacy as a core principle. We do not collect, store, or transmit
+                            any user
+                            data.</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mt-6">Data Collection</h3>
+                        <p>This app collects <strong>no personal information</strong>. All PDF compression happens
+                            entirely on
+                            your device. Your files are never uploaded to any server.</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mt-6">Network Access</h3>
+                        <p>This app does not require internet access and makes no network connections. It works
+                            completely
+                            offline.</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mt-6">Third-Party Services</h3>
+                        <p>This app does not integrate with any third-party analytics, advertising, or tracking
+                            services.</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mt-6">Contact</h3>
+                        <p>If you have questions about this privacy policy, contact us at <a
+                                href="mailto:ou.salman@icloud.com"
+                                class="text-blue-600 hover:underline">ou.salman@icloud.com</a></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Support -->
+            <section id="support" class="py-16 border-t border-gray-100">
+                <div class="max-w-3xl mx-auto px-6">
+                    <h2 class="text-2xl font-bold mb-6">Support</h2>
+                    <div class="prose text-gray-600 space-y-4">
+                        <p>Need help with GhostPDF? We're here to assist.</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mt-6">Contact</h3>
+                        <p>For bug reports, feature requests, or general questions, please email us at:</p>
+                        <p><a href="mailto:ou.salman@icloud.com"
+                                class="text-blue-600 hover:underline font-medium">ou.salman@icloud.com</a></p>
+                        <h3 class="text-lg font-semibold text-gray-900 mt-6">Common Issues</h3>
+                        <ul class="list-disc list-inside space-y-2">
+                            <li><strong>PDF not compressing:</strong> Some PDFs are already optimized and may not
+                                compress
+                                further.</li>
+                            <li><strong>Ghostscript not detected:</strong> Install via Homebrew with <code
+                                    class="bg-gray-100 px-1 rounded">brew install ghostscript</code></li>
+                            <li><strong>Quality too low:</strong> Try a higher DPI setting in Pro Mode.</li>
+                        </ul>
+                        <h3 class="text-lg font-semibold text-gray-900 mt-6">System Requirements</h3>
+                        <p>macOS 11.0 (Big Sur) or later. Compatible with both Apple Silicon and Intel Macs.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="py-12 border-t border-gray-100">
+                <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <p class="text-gray-500 text-sm">© 2025 Lale Taneri</p>
+                    <div class="flex items-center gap-6 text-sm">
+                        <a href="#privacy" class="text-gray-500 hover:text-gray-900 transition">Privacy Policy</a>
+                        <a href="#support" class="text-gray-500 hover:text-gray-900 transition">Support</a>
+                        <a href="https://ko-fi.com/oguzumut"
+                            class="text-gray-500 hover:text-gray-900 transition">Ko-fi</a>
+                    </div>
+                </div>
+            </footer>
+
+</body>
+
+</html>
