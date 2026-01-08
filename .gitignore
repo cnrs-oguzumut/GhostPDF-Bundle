@@ -8,3 +8,6 @@ ghostscript-bundle/
 test_blank.pdf
 .env
 build-notarized.sh
+build-lite.sh
+build-bundled-notarized.sh
+build-sandboxed.sh

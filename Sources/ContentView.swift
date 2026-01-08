@@ -76,7 +76,6 @@ struct ContentView: View {
     
     // Reorder State
     @State private var reorderPageOrder: [Int] = []
-    @State private var reorderPageOrderText: String = ""
     
     struct PDFFile: Identifiable, Equatable {
         let id = UUID()
@@ -282,7 +281,9 @@ struct ContentView: View {
                 pageNumberFontSize: $pageNumberFontSize,
                 pageNumberStartFrom: $pageNumberStartFrom,
                 pageNumberFormat: $pageNumberFormat,
-                reorderPageOrderText: $reorderPageOrderText
+                reorderPageOrder: $reorderPageOrder,
+                splitSelectedPages: $splitSelectedPages,
+                splitThumbnailsCount: splitThumbnails.count
             )
             .onChange(of: selectedTool) { _ in checkAndGenerateThumbnails() }
             .onChange(of: selectedFiles) { _ in checkAndGenerateThumbnails() }
@@ -399,58 +400,35 @@ struct ContentView: View {
     }
     
     private func rasterizePDF() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
         
-        // For batch, we'll save to the same directory with _rasterized suffix
-        // If single file, we could prompt, but for consistency let's auto-name or prompt folder?
-        // Let's stick to auto-naming for batch to avoid 10 popups.
+        // Sandbox Compliance: Prompt
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
         
-
-        if selectedFiles.count == 1 {
-            let inputURL = selectedFiles[0].url
+        if checkedFiles.count > 1 {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the rasterized files"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            let file = checkedFiles[0]
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.pdf]
-            panel.nameFieldStringValue = inputURL.deletingPathExtension().lastPathComponent + "_rasterized.pdf"
-            panel.directoryURL = inputURL.deletingLastPathComponent()
-            
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_rasterized.pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
             guard panel.runModal() == .OK, let url = panel.url else { return }
-            // We'll use this single URL logic specially or just handle it below
-            // To keep logic unified, let's just make a "plan" of inputs/outputs
-             startOperation(message: "Rasterizing...")
-             
-             Task {
-                 await MainActor.run {
-                     selectedFiles[0].status = .compressing(0)
-                 }
-                 do {
-                     let result = try await PDFCompressor.rasterize(
-                         input: inputURL,
-                         output: url,
-                         dpi: rasterDPI
-                     ) { prog in
-                         Task { @MainActor in 
-                            totalProgress = prog
-                            selectedFiles[0].status = .compressing(prog)
-                         }
-                     }
-                     
-                     await MainActor.run {
-                        selectedFiles[0].status = .done
-                        selectedFiles[0].compressedSize = result.compressedSize
-                        selectedFiles[0].outputURL = result.outputPath
-                        lastResults = [result]
-                        finishOperation(message: "Rasterized! Size: \(formatSize(result.compressedSize))")
-                        showingResult = true
-                     }
-                 } catch {
-                     await handleError(error)
-                     await MainActor.run { selectedFiles[0].status = .error(error.localizedDescription) }
-                 }
-             }
-             return
+            singleFileOutputURL = url
         }
         
-        // Batch Mode
         startOperation(message: "Rasterizing files...")
         currentFileIndex = 0
         
@@ -469,7 +447,16 @@ struct ContentView: View {
                 
                 while !success && retryCount < maxRetries {
                     do {
-                        let outputURL = file.url.deletingPathExtension().appendingPathExtension("rasterized.pdf")
+                        let outputURL: URL
+                        if let single = singleFileOutputURL {
+                            outputURL = single
+                        } else if let dir = destinationDir {
+                            let filename = file.url.deletingPathExtension().lastPathComponent + "_rasterized.pdf"
+                            outputURL = dir.appendingPathComponent(filename)
+                        } else {
+                            // Fallback
+                            outputURL = file.url.deletingPathExtension().appendingPathExtension("rasterized.pdf")
+                        }
                         
                         let result = try await PDFCompressor.rasterize(
                             input: file.url,
@@ -479,8 +466,8 @@ struct ContentView: View {
                         ) { prog in
                             Task { @MainActor in
                                 selectedFiles[index].status = .compressing(prog)
-                                let perFile = 1.0 / Double(selectedFiles.count)
-                                totalProgress = (Double(index) * perFile) + (prog * perFile)
+                                let perFile = 1.0 / Double(checkedFiles.count)
+                                totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
                             }
                         }
                         
@@ -525,20 +512,29 @@ struct ContentView: View {
                 isCompressing = false
                 showingResult = true
                 statusMessage = "Batch rasterization complete!"
+                
+                if let single = singleFileOutputURL {
+                    PDFCompressor.revealInFinder(single)
+                } else if let dir = destinationDir {
+                    PDFCompressor.revealInFinder(dir)
+                }
             }
         }
     }
     
     private func extractImages() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
         
-        // Prompt for a single output directory for ALL images
+        // Use NSOpenPanel to pick a FOLDER where subfolders for images will be created.
+        // Granting access to this folder allows creating subdirectories inside it.
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = "Select Output Folder"
-        if let first = selectedFiles.first {
+        panel.message = "Choose a location to save extracted images"
+        if let first = checkedFiles.first {
              panel.directoryURL = first.url.deletingLastPathComponent()
         }
         
@@ -549,7 +545,6 @@ struct ContentView: View {
         
         Task {
             var lastCreatedFolder: URL? = nil
-            let checkedFilesCount = selectedFiles.filter { $0.isChecked }.count
             
             for (index, file) in selectedFiles.enumerated() {
                 guard file.isChecked else { continue }
@@ -581,8 +576,8 @@ struct ContentView: View {
                                 ) { prog in
                                      Task { @MainActor in
                                         selectedFiles[index].status = .compressing(prog)
-                                        let perFile = 1.0 / Double(selectedFiles.count)
-                                        totalProgress = (Double(index) * perFile) + (prog * perFile)
+                                        let perFile = 1.0 / Double(checkedFiles.count)
+                                        totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
                                     }
                                 }
                             } else {
@@ -593,14 +588,15 @@ struct ContentView: View {
                                 ) { prog in
                                      Task { @MainActor in
                                         selectedFiles[index].status = .compressing(prog)
-                                        let perFile = 1.0 / Double(selectedFiles.count)
-                                        totalProgress = (Double(index) * perFile) + (prog * perFile)
+                                        let perFile = 1.0 / Double(checkedFiles.count)
+                                        totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
                                     }
                                 }
                             }
                             
                             await MainActor.run {
                                 selectedFiles[index].status = .done
+                                lastResults.append(CompressionResult(outputPath: fileFolder, originalSize: 0, compressedSize: 0, engine: .ghostscript))
                             }
                             success = true
                         } catch CompressionError.passwordRequired {
@@ -636,7 +632,7 @@ struct ContentView: View {
             await MainActor.run {
                 isCompressing = false
                 statusMessage = "Batch extraction complete!"
-                if checkedFilesCount == 1, let folder = lastCreatedFolder {
+                if checkedFiles.count == 1, let folder = lastCreatedFolder {
                     PDFCompressor.revealInFinder(folder)
                 } else {
                     PDFCompressor.revealInFinder(outputDir)
@@ -672,7 +668,36 @@ struct ContentView: View {
     }
 
     private func compress() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
+        
+        // Sandbox Compliance: Prompt for output location
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
+        
+        if checkedFiles.count > 1 {
+            // Batch: Pick Output Folder
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the compressed files"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            // Single: Save Panel
+            let file = checkedFiles[0]
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_compressed.pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            singleFileOutputURL = url
+        }
         
         isCompressing = true
         totalProgress = 0
@@ -696,7 +721,17 @@ struct ContentView: View {
                 
                 while !success && retryCount < maxRetries {
                     do {
-                        let outputURL = file.url.deletingPathExtension().appendingPathExtension("compressed.pdf")
+                        // Determine Output URL based on selection mode
+                        let outputURL: URL
+                        if let singleUrl = singleFileOutputURL {
+                            outputURL = singleUrl
+                        } else if let dir = destinationDir {
+                            let filename = file.url.deletingPathExtension().lastPathComponent + "_compressed.pdf"
+                            outputURL = dir.appendingPathComponent(filename)
+                        } else {
+                            // Fallback (should not happen)
+                            outputURL = file.url.deletingPathExtension().appendingPathExtension("compressed.pdf")
+                        }
                         
                         let proSet: ProSettings? = selectedTab == 1 ? proSettings : nil
                         let result = try await PDFCompressor.compress(
@@ -708,8 +743,8 @@ struct ContentView: View {
                         ) { prog in
                             Task { @MainActor in
                                 selectedFiles[index].status = .compressing(prog)
-                                let perFile = 1.0 / Double(selectedFiles.count)
-                                totalProgress = (Double(index) * perFile) + (prog * perFile)
+                                let perFile = 1.0 / Double(checkedFiles.count)
+                                totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
                             }
                         }
                         
@@ -766,6 +801,13 @@ struct ContentView: View {
                 isCompressing = false
                 showingResult = true
                 statusMessage = "Batch processing complete!"
+                
+                // If single file, reveal it
+                if let single = singleFileOutputURL {
+                    PDFCompressor.revealInFinder(single)
+                } else if let dir = destinationDir {
+                    PDFCompressor.revealInFinder(dir)
+                }
             }
         }
     }
@@ -809,22 +851,25 @@ struct ContentView: View {
     private func split() {
         guard !selectedFiles.isEmpty else { return }
         
-        // Prompt for output directory
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = "Select Output Folder"
+        panel.message = "Choose where to save the split files"
         if let first = selectedFiles.first {
              panel.directoryURL = first.url.deletingLastPathComponent()
         }
         
         guard panel.runModal() == .OK, let outputDir = panel.url else { return }
         
-        startOperation(message: "Splitting PDF...")
+        startOperation(message: "Splitting files...")
+        currentFileIndex = 0
         
         Task {
-            currentFileIndex = 0
+            let checkedFiles = selectedFiles.filter { $0.isChecked }
+            var lastCreatedFolder: URL? = nil
+            
             for (index, file) in selectedFiles.enumerated() {
                 guard file.isChecked else { continue }
                 await MainActor.run {
@@ -832,71 +877,142 @@ struct ContentView: View {
                     selectedFiles[index].status = .compressing(0)
                 }
                 
-                if splitMode == .extractSelected {
-                    // Use selected pages from thumbnails
-                    let pages = Array(splitSelectedPages).sorted()
-                    if pages.isEmpty {
-                         // Fallback if nothing selected? Or maybe just splitting fails/warns?
-                         // For now let's skip or handle error.
-                         // Actually, let's assume if nothing selected, we do nothing or split all?
-                         // Better to just return if empty, but for robust UX let's proceed and let backend handle or warn.
-                         // But we should probably warn user before starting if empty.
-                    }
+                do {
+                    // Create subfolder for cleanliness if handling multiple files or many pages
+                    let fileFolder = outputDir.appendingPathComponent(file.url.deletingPathExtension().lastPathComponent + "_Split")
+                    try FileManager.default.createDirectory(at: fileFolder, withIntermediateDirectories: true)
+                    lastCreatedFolder = fileFolder
                     
-                    try await PDFCompressor.split(
-                        input: file.url,
-                        outputDir: outputDir,
-                        pages: pages
-                    ) { prog in
-                        Task { @MainActor in
-                            selectedFiles[index].status = .compressing(prog)
-                            let perFile = 1.0 / Double(selectedFiles.count)
-                            totalProgress = (Double(index) * perFile) + (prog * perFile)
+                    var currentPassword: String? = nil
+                    var retryCount = 0
+                    let maxRetries = 3
+                    var success = false
+                    
+                    while !success && retryCount < maxRetries {
+                        do {
+                            // Extract specific pages or range or all?
+                            // Depends on splitMode
+                            if splitMode == .extractSelected {
+                                try await PDFCompressor.split(
+                                    input: file.url,
+                                    outputDir: fileFolder,
+                                    pages: Array(splitSelectedPages),
+                                    password: currentPassword
+                                ) { prog in
+                                     Task { @MainActor in
+                                        selectedFiles[index].status = .compressing(prog)
+                                        let perFile = 1.0 / Double(checkedFiles.count)
+                                        totalProgress = (Double(index) * perFile) + (prog * perFile)
+                                    }
+                                }
+                            } else if splitMode == .extractRange { // Range
+                                try await PDFCompressor.split(
+                                    input: file.url,
+                                    outputDir: fileFolder,
+                                    startPage: splitStartPage,
+                                    endPage: splitEndPage,
+                                    password: currentPassword
+                                ) { prog in
+                                     Task { @MainActor in
+                                        selectedFiles[index].status = .compressing(prog)
+                                        let perFile = 1.0 / Double(checkedFiles.count)
+                                        totalProgress = (Double(index) * perFile) + (prog * perFile)
+                                    }
+                                }
+                            } else { // Split All
+                                try await PDFCompressor.split(
+                                    input: file.url,
+                                    outputDir: fileFolder,
+                                    password: currentPassword
+                                ) { prog in
+                                    Task { @MainActor in
+                                        selectedFiles[index].status = .compressing(prog)
+                                        let perFile = 1.0 / Double(checkedFiles.count)
+                                        totalProgress = (Double(index) * perFile) + (prog * perFile)
+                                    }
+                                }
+                            }
+                            
+                            await MainActor.run {
+                                selectedFiles[index].status = .done
+                            }
+                            success = true
+                        } catch CompressionError.passwordRequired {
+                             let password = await MainActor.run { () -> String? in
+                                let alert = NSAlert()
+                                alert.messageText = "Password Required"
+                                alert.informativeText = "The file \"\(file.url.lastPathComponent)\" is encrypted."
+                                alert.addButton(withTitle: "Unlock")
+                                alert.addButton(withTitle: "Skip")
+                                let input = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+                                alert.accessoryView = input
+                                alert.window.initialFirstResponder = input
+                                if alert.runModal() == .alertFirstButtonReturn { return input.stringValue }
+                                return nil
+                            }
+                            if let pass = password, !pass.isEmpty {
+                                currentPassword = pass
+                                retryCount += 1
+                            } else {
+                                await MainActor.run { selectedFiles[index].status = .error("Password skipped") }
+                                break
+                            }
+                        } catch {
+                            throw error
                         }
                     }
-                } else {
-                    // If specific range, start/end provided
-                    let start: Int? = splitMode == .extractRange ? splitStartPage : nil
-                    let end: Int? = splitMode == .extractRange ? splitEndPage : nil
-                    
-                    try await PDFCompressor.split(
-                        input: file.url,
-                        outputDir: outputDir,
-                        startPage: start,
-                        endPage: end
-                    ) { prog in
-                        Task { @MainActor in
-                            selectedFiles[index].status = .compressing(prog)
-                            let perFile = 1.0 / Double(selectedFiles.count)
-                            totalProgress = (Double(index) * perFile) + (prog * perFile)
-                        }
-                    }
+                } catch {
+                     await MainActor.run { selectedFiles[index].status = .error(error.localizedDescription) }
                 }
-                
-                // Success
-                await MainActor.run { 
-                    selectedFiles[index].status = .done 
-                    finishOperation(message: "Split complete!")
-                }
-
             }
             
             await MainActor.run {
                 finishOperation(message: "Split complete!")
-                PDFCompressor.revealInFinder(outputDir)
+                if checkedFiles.count == 1, let folder = lastCreatedFolder {
+                    PDFCompressor.revealInFinder(folder)
+                } else {
+                    PDFCompressor.revealInFinder(outputDir)
+                }
+                showingResult = true
             }
         }
     }
 
 
     private func rotateOrDelete() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
         
-        // Use selected pages from thumbnails
         let pagesSet = splitSelectedPages
         if pagesSet.isEmpty && rotateOp == .delete { 
-            // For delete, we need at least one page selected
             return 
+        }
+        
+        // Sandbox Compliance: Prompt
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
+        let suffix = rotateOp == .rotate ? "_rotated" : "_edited"
+        
+        if checkedFiles.count > 1 {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the processed files"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            let file = checkedFiles[0]
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + suffix + ".pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            singleFileOutputURL = url
         }
         
         Task {
@@ -913,50 +1029,88 @@ struct ContentView: View {
                     selectedFiles[index].status = .compressing(0)
                 }
                 
-                do {
-                    let suffix = rotateOp == .rotate ? "_rotated" : "_edited"
-                    let outputURL = file.url.deletingPathExtension().appendingPathExtension(suffix + ".pdf")
-                     
-                    if rotateOp == .rotate {
-                        try await PDFCompressor.rotate(
-                            input: file.url,
-                            output: outputURL,
-                            angle: rotationAngle,
-                            pages: pagesSet.isEmpty ? nil : pagesSet,
-                            password: nil
-                        ) { prog in
-                            Task { @MainActor in
-                                selectedFiles[index].status = .compressing(prog)
-                                totalProgress = prog
+                var currentPassword: String? = nil
+                var retryCount = 0
+                let maxRetries = 3
+                var success = false
+                
+                while !success && retryCount < maxRetries {
+                    do {
+                        let outputURL: URL
+                        if let single = singleFileOutputURL {
+                            outputURL = single
+                        } else if let dir = destinationDir {
+                            let filename = file.url.deletingPathExtension().lastPathComponent + suffix + ".pdf"
+                            outputURL = dir.appendingPathComponent(filename)
+                        } else {
+                            outputURL = file.url.deletingPathExtension().appendingPathExtension(suffix + ".pdf")
+                        }
+                        
+                        if rotateOp == .rotate {
+                            try await PDFCompressor.rotate(
+                                input: file.url,
+                                output: outputURL,
+                                angle: rotationAngle,
+                                pages: pagesSet.isEmpty ? nil : pagesSet,
+                                password: currentPassword
+                            ) { prog in
+                                Task { @MainActor in
+                                    selectedFiles[index].status = .compressing(prog)
+                                    let perFile = 1.0 / Double(checkedFiles.count)
+                                    totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
+                                }
+                            }
+                        } else {
+                            try await PDFCompressor.deletePages(
+                                input: file.url,
+                                output: outputURL,
+                                pagesToDelete: pagesSet,
+                                password: currentPassword
+                            ) { prog in
+                                 Task { @MainActor in
+                                    selectedFiles[index].status = .compressing(prog)
+                                    let perFile = 1.0 / Double(checkedFiles.count)
+                                    totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
+                                }
                             }
                         }
-                    } else {
-                        try await PDFCompressor.deletePages(
-                            input: file.url,
-                            output: outputURL,
-                            pagesToDelete: pagesSet,
-                            password: nil
-                        ) { prog in
-                             Task { @MainActor in
-                                selectedFiles[index].status = .compressing(prog)
-                                totalProgress = prog
+                        
+                        await MainActor.run {
+                            var updatedFile = selectedFiles[index]
+                            updatedFile.status = .done
+                            updatedFile.outputURL = outputURL 
+                            if let attr = try? FileManager.default.attributesOfItem(atPath: outputURL.path),
+                               let size = attr[.size] as? Int64 {
+                                updatedFile.compressedSize = size
                             }
+                            selectedFiles[index] = updatedFile
+                            lastResults.append(CompressionResult(outputPath: outputURL, originalSize: file.originalSize, compressedSize: updatedFile.compressedSize, engine: .ghostscript))
                         }
-                    }
-                    
-                    await MainActor.run {
-                        var updatedFile = selectedFiles[index]
-                        updatedFile.status = .done
-                        updatedFile.outputURL = outputURL 
-                        if let attr = try? FileManager.default.attributesOfItem(atPath: outputURL.path),
-                           let size = attr[.size] as? Int64 {
-                            updatedFile.compressedSize = size
+                        success = true
+                    } catch CompressionError.passwordRequired {
+                        let password = await MainActor.run { () -> String? in
+                            let alert = NSAlert()
+                            alert.messageText = "Password Required"
+                            alert.informativeText = "The file \"\(file.url.lastPathComponent)\" is encrypted."
+                            alert.addButton(withTitle: "Unlock")
+                            alert.addButton(withTitle: "Skip")
+                            let input = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+                            alert.accessoryView = input
+                            alert.window.initialFirstResponder = input
+                            if alert.runModal() == .alertFirstButtonReturn { return input.stringValue }
+                            return nil
                         }
-                        selectedFiles[index] = updatedFile
-                        lastResults.append(CompressionResult(outputPath: outputURL, originalSize: file.originalSize, compressedSize: updatedFile.compressedSize, engine: .ghostscript))
+                        if let pass = password, !pass.isEmpty {
+                            currentPassword = pass
+                            retryCount += 1
+                        } else {
+                            await MainActor.run { selectedFiles[index].status = .error("Password skipped") }
+                            break
+                        }
+                    } catch {
+                         await MainActor.run { selectedFiles[index].status = .error(error.localizedDescription) }
+                         break
                     }
-                } catch {
-                     await handleError(error)
                 }
             }
             
@@ -970,8 +1124,35 @@ struct ContentView: View {
             }
 
     private func applyWatermark() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
         guard !watermarkText.isEmpty else { return }
+        
+        // Sandbox Compliance: Prompt
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
+        
+        if checkedFiles.count > 1 {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the watermarked files"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            let file = checkedFiles[0]
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_watermarked.pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            singleFileOutputURL = url
+        }
         
         Task {
             await MainActor.run {
@@ -987,7 +1168,15 @@ struct ContentView: View {
                 }
                 
                 do {
-                    let outputURL = file.url.deletingPathExtension().appendingPathExtension("_watermarked.pdf")
+                    let outputURL: URL
+                    if let single = singleFileOutputURL {
+                        outputURL = single
+                    } else if let dir = destinationDir {
+                        let filename = file.url.deletingPathExtension().lastPathComponent + "_watermarked.pdf"
+                        outputURL = dir.appendingPathComponent(filename)
+                    } else {
+                        outputURL = file.url.deletingPathExtension().appendingPathExtension("_watermarked.pdf")
+                    }
                     
                     try await PDFCompressor.watermark(
                         input: file.url,
@@ -1000,7 +1189,8 @@ struct ContentView: View {
                     ) { prog in
                         Task { @MainActor in
                             selectedFiles[index].status = .compressing(prog)
-                            totalProgress = prog
+                            let perFile = 1.0 / Double(checkedFiles.count)
+                            totalProgress = (Double(index) * perFile) + (prog * perFile)
                         }
                     }
                     
@@ -1021,16 +1211,45 @@ struct ContentView: View {
             
             await MainActor.run {
                 finishOperation(message: "Watermark added!")
-                if let first = selectedFiles.first?.outputURL {
-                    PDFCompressor.revealInFinder(first)
+                if let single = singleFileOutputURL {
+                    PDFCompressor.revealInFinder(single)
+                } else if let dir = destinationDir {
+                    PDFCompressor.revealInFinder(dir)
                 }
             }
         }
     }
     
     private func encryptPDF() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
         guard !encryptPassword.isEmpty && encryptPassword == encryptConfirmPassword else { return }
+        
+        // Sandbox Compliance: Prompt
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
+        
+        if checkedFiles.count > 1 {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the encrypted files"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            let file = checkedFiles[0]
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_encrypted.pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            singleFileOutputURL = url
+        }
         
         Task {
             await MainActor.run {
@@ -1046,7 +1265,15 @@ struct ContentView: View {
                 }
                 
                 do {
-                    let outputURL = file.url.deletingPathExtension().appendingPathExtension("_encrypted.pdf")
+                    let outputURL: URL
+                    if let single = singleFileOutputURL {
+                        outputURL = single
+                    } else if let dir = destinationDir {
+                        let filename = file.url.deletingPathExtension().lastPathComponent + "_encrypted.pdf"
+                        outputURL = dir.appendingPathComponent(filename)
+                    } else {
+                        outputURL = file.url.deletingPathExtension().appendingPathExtension("_encrypted.pdf")
+                    }
                     
                     try await PDFCompressor.encrypt(
                         input: file.url,
@@ -1059,7 +1286,8 @@ struct ContentView: View {
                     ) { prog in
                         Task { @MainActor in
                             selectedFiles[index].status = .compressing(prog)
-                            totalProgress = prog
+                            let perFile = 1.0 / Double(checkedFiles.count)
+                            totalProgress = (Double(index) * perFile) + (prog * perFile)
                         }
                     }
                     
@@ -1080,16 +1308,45 @@ struct ContentView: View {
             
             await MainActor.run {
                 finishOperation(message: "Encryption complete!")
-                if let first = selectedFiles.first?.outputURL {
-                    PDFCompressor.revealInFinder(first)
+                if let single = singleFileOutputURL {
+                    PDFCompressor.revealInFinder(single)
+                } else if let dir = destinationDir {
+                    PDFCompressor.revealInFinder(dir)
                 }
             }
         }
     }
 
     private func decryptPDF() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
         guard !decryptPassword.isEmpty else { return }
+        
+        // Sandbox Compliance: Prompt
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
+        
+        if checkedFiles.count > 1 {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the decrypted files"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            let file = checkedFiles[0]
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_decrypted.pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            singleFileOutputURL = url
+        }
         
         Task {
             await MainActor.run {
@@ -1105,7 +1362,15 @@ struct ContentView: View {
                 }
                 
                 do {
-                    let outputURL = file.url.deletingPathExtension().appendingPathExtension("_decrypted.pdf")
+                    let outputURL: URL
+                    if let single = singleFileOutputURL {
+                        outputURL = single
+                    } else if let dir = destinationDir {
+                        let filename = file.url.deletingPathExtension().lastPathComponent + "_decrypted.pdf"
+                        outputURL = dir.appendingPathComponent(filename)
+                    } else {
+                        outputURL = file.url.deletingPathExtension().appendingPathExtension("_decrypted.pdf")
+                    }
                     
                     try await PDFCompressor.decrypt(
                         input: file.url,
@@ -1114,7 +1379,8 @@ struct ContentView: View {
                     ) { prog in
                         Task { @MainActor in
                             selectedFiles[index].status = .compressing(prog)
-                            totalProgress = prog
+                            let perFile = 1.0 / Double(checkedFiles.count)
+                            totalProgress = (Double(index) * perFile) + (prog * perFile)
                         }
                     }
                     
@@ -1135,32 +1401,69 @@ struct ContentView: View {
             
             await MainActor.run {
                 finishOperation(message: "Decryption complete!")
-                if let first = selectedFiles.first?.outputURL {
-                    PDFCompressor.revealInFinder(first)
+                if let single = singleFileOutputURL {
+                    PDFCompressor.revealInFinder(single)
+                } else if let dir = destinationDir {
+                    PDFCompressor.revealInFinder(dir)
                 }
             }
         }
     }
 
     private func addPageNumbers() {
-        guard !selectedFiles.isEmpty else { return }
-
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
+        
+        // Sandbox Compliance: Prompt
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
+        
+        if checkedFiles.count > 1 {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the files with page numbers"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            let file = checkedFiles[0]
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_numbered.pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            singleFileOutputURL = url
+        }
+        
         Task {
             await MainActor.run {
                 startOperation(message: "Adding page numbers...")
                 currentFileIndex = 0
             }
-
+            
             for (index, file) in selectedFiles.enumerated() {
                 guard file.isChecked else { continue }
                 await MainActor.run {
                     currentFileIndex = index
                     selectedFiles[index].status = .compressing(0)
                 }
-
+                
                 do {
-                    let outputURL = file.url.deletingPathExtension().appendingPathExtension("_numbered.pdf")
-
+                    let outputURL: URL
+                    if let single = singleFileOutputURL {
+                        outputURL = single
+                    } else if let dir = destinationDir {
+                        let filename = file.url.deletingPathExtension().lastPathComponent + "_numbered.pdf"
+                        outputURL = dir.appendingPathComponent(filename)
+                    } else {
+                        outputURL = file.url.deletingPathExtension().appendingPathExtension("_numbered.pdf")
+                    }
+                    
                     try await PDFCompressor.addPageNumbers(
                         input: file.url,
                         output: outputURL,
@@ -1172,10 +1475,11 @@ struct ContentView: View {
                     ) { prog in
                         Task { @MainActor in
                             selectedFiles[index].status = .compressing(prog)
-                            totalProgress = prog
+                            let perFile = 1.0 / Double(checkedFiles.count)
+                            totalProgress = (Double(index) * perFile) + (prog * perFile)
                         }
                     }
-
+                    
                     await MainActor.run {
                         var updatedFile = selectedFiles[index]
                         updatedFile.status = .done
@@ -1190,11 +1494,13 @@ struct ContentView: View {
                     await handleError(error)
                 }
             }
-
+            
             await MainActor.run {
                 finishOperation(message: "Page numbers added!")
-                if let first = selectedFiles.first?.outputURL {
-                    PDFCompressor.revealInFinder(first)
+                if let single = singleFileOutputURL {
+                    PDFCompressor.revealInFinder(single)
+                } else if let dir = destinationDir {
+                    PDFCompressor.revealInFinder(dir)
                 }
             }
         }
@@ -1204,6 +1510,12 @@ struct ContentView: View {
         guard selectedFiles.count == 1, let file = selectedFiles.first else { return }
         guard !reorderPageOrder.isEmpty else { return }
         
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_reordered.pdf"
+        panel.directoryURL = file.url.deletingLastPathComponent()
+        guard panel.runModal() == .OK, let outputURL = panel.url else { return }
+        
         Task {
             await MainActor.run {
                 startOperation(message: "Reordering pages...")
@@ -1212,8 +1524,6 @@ struct ContentView: View {
             }
             
             do {
-                let outputURL = file.url.deletingPathExtension().appendingPathExtension("_reordered.pdf")
-                
                 try await PDFCompressor.reorderPages(
                     input: file.url,
                     output: outputURL,
@@ -1242,15 +1552,40 @@ struct ContentView: View {
             
             await MainActor.run {
                 finishOperation(message: "Reorder complete!")
-                if let first = selectedFiles.first?.outputURL {
-                    PDFCompressor.revealInFinder(first)
-                }
+                PDFCompressor.revealInFinder(outputURL)
             }
         }
     }
 
     private func resizeToA4() {
-        guard !selectedFiles.isEmpty else { return }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
+        
+        // Sandbox Compliance: Prompt
+        var destinationDir: URL?
+        var singleFileOutputURL: URL?
+        
+        if checkedFiles.count > 1 {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Select Output Folder"
+            panel.message = "Choose where to save the resized files"
+            if let first = checkedFiles.first {
+                 panel.directoryURL = first.url.deletingLastPathComponent()
+            }
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            destinationDir = url
+        } else {
+            let file = checkedFiles[0]
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.pdf]
+            panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + "_A4.pdf"
+            panel.directoryURL = file.url.deletingLastPathComponent()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            singleFileOutputURL = url
+        }
         
         Task {
             await MainActor.run {
@@ -1269,7 +1604,16 @@ struct ContentView: View {
                 }
                 
                 do {
-                    let outputURL = file.url.deletingPathExtension().appendingPathExtension("_A4.pdf")
+                    let outputURL: URL
+                    if let single = singleFileOutputURL {
+                        outputURL = single
+                    } else if let dir = destinationDir {
+                        let filename = file.url.deletingPathExtension().lastPathComponent + "_A4.pdf"
+                        outputURL = dir.appendingPathComponent(filename)
+                    } else {
+                        outputURL = file.url.deletingPathExtension().appendingPathExtension("_A4.pdf")
+                    }
+                    
                     let startBytes = try FileManager.default.attributesOfItem(atPath: file.url.path)[.size] as? Int64 ?? 0
                     
                     try await PDFCompressor.resizeToA4(
@@ -1278,7 +1622,8 @@ struct ContentView: View {
                     ) { prog in
                         Task { @MainActor in
                             selectedFiles[index].status = .compressing(prog)
-                            totalProgress = (Double(index) + prog) / Double(selectedFiles.count)
+                            let perFile = 1.0 / Double(checkedFiles.count)
+                            totalProgress = (Double(index) * perFile) + (prog * perFile)
                         }
                     }
                     
@@ -1309,6 +1654,12 @@ struct ContentView: View {
                 totalProgress = 1.0
                 lastResults = results
                 showingResult = true
+                
+                if let single = singleFileOutputURL {
+                    PDFCompressor.revealInFinder(single)
+                } else if let dir = destinationDir {
+                    PDFCompressor.revealInFinder(dir)
+                }
             }
         }
     }
@@ -2033,7 +2384,9 @@ struct ToolsTabView: View {
     @Binding var pageNumberFontSize: Int
     @Binding var pageNumberStartFrom: Int
     @Binding var pageNumberFormat: PageNumberFormat
-    @Binding var reorderPageOrderText: String
+    @Binding var reorderPageOrder: [Int]
+    @Binding var splitSelectedPages: Set<Int>
+    var splitThumbnailsCount: Int
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
 
     var body: some View {
@@ -2048,7 +2401,7 @@ struct ToolsTabView: View {
                 } else if selectedTool == .split {
                     SplitSettingsView(splitMode: $splitMode, splitStartPage: $splitStartPage, splitEndPage: $splitEndPage)
                 } else if selectedTool == .rotateDelete {
-                    RotateDeleteSettingsView(rotateOp: $rotateOp, rotationAngle: $rotationAngle, pagesToDelete: $pagesToDelete)
+                    RotateDeleteSettingsView(rotateOp: $rotateOp, rotationAngle: $rotationAngle, pagesToDelete: $pagesToDelete, selectedPages: $splitSelectedPages, totalPages: splitThumbnailsCount)
                 } else if selectedTool == .pageNumber {
                     PageNumberSettingsView(
                         pageNumberPosition: $pageNumberPosition,
@@ -2057,7 +2410,7 @@ struct ToolsTabView: View {
                         pageNumberFormat: $pageNumberFormat
                     )
                 } else if selectedTool == .reorder {
-                    ReorderSettingsView(pageOrderText: $reorderPageOrderText)
+                    ReorderSettingsView(pageOrder: $reorderPageOrder)
                 } else {
                     MergeSettingsView()
                 }
@@ -2156,7 +2509,7 @@ struct ExtractImagesSettingsView: View {
                     
                     SliderRow(label: "Resolution", value: $imageDPI, range: 72...600, suffix: " dpi")
                 } else {
-                    Text("Extracts original images from the PDF without re-compression.")
+                    Text("Extracts embedded images from the PDF (supports JPEG, PNG & CMYK). CMYK images are converted to RGB PNGs.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2295,6 +2648,8 @@ struct RotateDeleteSettingsView: View {
     @Binding var rotateOp: RotateOperation
     @Binding var rotationAngle: Int
     @Binding var pagesToDelete: String
+    @Binding var selectedPages: Set<Int>
+    var totalPages: Int
     
     var body: some View {
         GroupBox("Rotate / Delete Settings") {
@@ -2332,11 +2687,63 @@ struct RotateDeleteSettingsView: View {
                         }
                         .buttonStyle(.bordered)
                     }
+                    
+                    // Quick select for rotate
+                    if totalPages > 0 {
+                        HStack(spacing: 8) {
+                            Button("Select Odd") {
+                                selectedPages = Set((1...totalPages).filter { $0 % 2 == 1 })
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Select Even") {
+                                selectedPages = Set((1...totalPages).filter { $0 % 2 == 0 })
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Select All") {
+                                selectedPages = Set(1...totalPages)
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Clear") {
+                                selectedPages = []
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                 } else {
                     Text("Select pages to delete from the thumbnail view above.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Quick select for delete
+                    if totalPages > 0 {
+                        HStack(spacing: 8) {
+                            Button("Select Odd") {
+                                selectedPages = Set((1...totalPages).filter { $0 % 2 == 1 })
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Select Even") {
+                                selectedPages = Set((1...totalPages).filter { $0 % 2 == 0 })
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Select All") {
+                                selectedPages = Set(1...totalPages)
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Clear") {
+                                selectedPages = []
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                 }
             }
         }
@@ -2357,7 +2764,9 @@ struct MergeSettingsView: View {
 }
 
 struct ReorderSettingsView: View {
-    @Binding var pageOrderText: String
+    @Binding var pageOrder: [Int]
+    @State private var text: String = ""
+    @State private var isEditing: Bool = false
     
     var body: some View {
         GroupBox("Reorder Pages") {
@@ -2367,8 +2776,68 @@ struct ReorderSettingsView: View {
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 
-                TextField("e.g., 3,1,2,4", text: $pageOrderText)
-                    .textFieldStyle(.roundedBorder)
+                TextField("e.g., 3,1,2,4", text: $text, onEditingChanged: { editing in
+                    isEditing = editing
+                    if !editing {
+                        parseText()
+                    }
+                })
+                .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    parseText()
+                }
+                .onChange(of: pageOrder) { newValue in
+                    if !isEditing {
+                        text = formatPageOrder(newValue)
+                    }
+                }
+                .onAppear {
+                    text = formatPageOrder(pageOrder)
+                }
+                
+                HStack(spacing: 12) {
+                    Button(action: {
+                        withAnimation {
+                            pageOrder.reverse()
+                        }
+                    }) {
+                        Label("Reverse", systemImage: "arrow.up.arrow.down")
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button(action: {
+                        withAnimation {
+                            pageOrder.sort()
+                        }
+                    }) {
+                        Label("Sort (1-N)", systemImage: "arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    if !pageOrder.isEmpty {
+                        Button(action: {
+                            withAnimation {
+                                // Odd pages first, then even
+                                let odds = pageOrder.filter { $0 % 2 == 1 }.sorted()
+                                let evens = pageOrder.filter { $0 % 2 == 0 }.sorted()
+                                pageOrder = odds + evens
+                            }
+                        }) {
+                            Label("Odd First", systemImage: "number")
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button(action: {
+                            withAnimation {
+                                pageOrder = Array(1...pageOrder.count)
+                            }
+                        }) {
+                            Label("Reset", systemImage: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .frame(maxWidth: .infinity)
                 
                 HStack {
                     Image(systemName: "info.circle")
@@ -2387,6 +2856,40 @@ struct ReorderSettingsView: View {
                 }
             }
         }
+    }
+    
+    private func parseText() {
+        let components = text.split(separator: ",")
+        var newOrder: [Int] = []
+        for component in components {
+            let trimmed = component.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let val = Int(trimmed) {
+                newOrder.append(val)
+            } else if trimmed.contains("-") {
+                // Handle ranges like 1-5
+                let parts = trimmed.split(separator: "-")
+                if parts.count == 2, let start = Int(parts[0]), let end = Int(parts[1]) {
+                    if start <= end {
+                        newOrder.append(contentsOf: start...end)
+                    } else {
+                        newOrder.append(contentsOf: (end...start).reversed())
+                    }
+                }
+            }
+        }
+        
+        // Basic validation: ensure no duplicates? Or just let it be (allows duplicating pages)
+        // Reordering usually implies permutation, but sometimes users want duplication.
+        // However, ReorderThumbnailView assumes permutation for dragging. 
+        // If the user enters a non-permutation, the thumbnail view might behave oddly but likely handles mismatched IDs by reloading.
+        if !newOrder.isEmpty {
+            pageOrder = newOrder
+        }
+    }
+    
+    private func formatPageOrder(_ order: [Int]) -> String {
+        // Show all page numbers individually
+        return order.map { String($0) }.joined(separator: ", ")
     }
 }
 
@@ -2698,10 +3201,37 @@ extension ContentView {
     }
     
     func performAdvancedAction() {
-         guard !selectedFiles.isEmpty else { return }
+         let checkedFiles = selectedFiles.filter { $0.isChecked }
+         guard !checkedFiles.isEmpty else { return }
          
          let opName = advancedMode == .repair ? "Repairing..." : "Converting to PDF/A..."
          let suffix = advancedMode == .repair ? "_repaired" : "_pdfa"
+         
+         // Sandbox Compliance: Prompt
+         var destinationDir: URL?
+         var singleFileOutputURL: URL?
+         
+         if checkedFiles.count > 1 {
+             let panel = NSOpenPanel()
+             panel.canChooseDirectories = true
+             panel.canChooseFiles = false
+             panel.allowsMultipleSelection = false
+             panel.prompt = "Select Output Folder"
+             panel.message = "Choose where to save the converted files"
+             if let first = checkedFiles.first {
+                  panel.directoryURL = first.url.deletingLastPathComponent()
+             }
+             guard panel.runModal() == .OK, let url = panel.url else { return }
+             destinationDir = url
+         } else {
+             let file = checkedFiles[0]
+             let panel = NSSavePanel()
+             panel.allowedContentTypes = [.pdf]
+             panel.nameFieldStringValue = file.url.deletingPathExtension().lastPathComponent + suffix + ".pdf"
+             panel.directoryURL = file.url.deletingLastPathComponent()
+             guard panel.runModal() == .OK, let url = panel.url else { return }
+             singleFileOutputURL = url
+         }
          
          startOperation(message: opName)
          
@@ -2715,9 +3245,17 @@ extension ContentView {
                      selectedFiles[index].status = .compressing(0)
                  }
                  
-                 let outputURL = file.url.deletingPathExtension().appendingPathExtension(suffix + ".pdf")
-                 
                  do {
+                     let outputURL: URL
+                     if let single = singleFileOutputURL {
+                         outputURL = single
+                     } else if let dir = destinationDir {
+                         let filename = file.url.deletingPathExtension().lastPathComponent + suffix + ".pdf"
+                         outputURL = dir.appendingPathComponent(filename)
+                     } else {
+                         outputURL = file.url.deletingPathExtension().appendingPathExtension(suffix + ".pdf")
+                     }
+                     
                      if advancedMode == .repair {
                          try await PDFCompressor.repairPDF(
                              input: file.url,
@@ -2726,7 +3264,7 @@ extension ContentView {
                          ) { prog in
                              Task { @MainActor in
                                  selectedFiles[index].status = .compressing(prog)
-                                 totalProgress = prog
+                                 totalProgress = (Double(results.count) / Double(checkedFiles.count)) + (prog / Double(checkedFiles.count))
                              }
                          }
                      } else {
@@ -2737,7 +3275,7 @@ extension ContentView {
                          ) { prog in
                              Task { @MainActor in
                                  selectedFiles[index].status = .compressing(prog)
-                                 totalProgress = prog
+                                 totalProgress = (Double(results.count) / Double(checkedFiles.count)) + (prog / Double(checkedFiles.count))
                              }
                          }
                      }
@@ -2772,6 +3310,12 @@ extension ContentView {
                  lastResults = results
                  finishOperation(message: "Done!")
                  showingResult = true
+                 
+                 if let single = singleFileOutputURL {
+                     PDFCompressor.revealInFinder(single)
+                 } else if let dir = destinationDir {
+                     PDFCompressor.revealInFinder(dir)
+                 }
              }
          }
     }

@@ -18,11 +18,11 @@ A modern, lightweight PDF compressor and toolkit for macOS, powered by Ghostscri
 ### 🛠️ PDF Tools
 - ✂️ **Split PDF** — Extract pages by range, selection, or split into individual pages
 - 🔗 **Merge PDF** — Combine multiple PDFs into one document
-- ↕️ **Reorder Pages** — Drag-and-drop page organization
+- ↕️ **Reorder Pages** — Visual page organization with Reverse, Sort, Odd First, and Reset buttons
 - 📏 **Resize to A4** — Standardize page size to A4
 - 🎨 **Rasterize** — Convert pages to bitmaps to prevent editing
-- 🖼️ **Extract Images** — Save pages as high-quality JPEG/PNG images or extract original embedded photos
-- 🔄 **Rotate & Delete** — Fix orientation or remove specific pages
+- 🖼️ **Extract Images** — Enhanced: Supports JPEG, PNG, JPEG 2000, CMYK, and complex color spaces (ICCBased, Indexed)
+- 🔄 **Rotate & Delete** — Quick select buttons for Odd/Even/All pages
 
 ### 🚀 Advanced Tools (New!)
 - 🛠️ **Repair & Sanitize** — Fix corrupted PDFs by rebuilding the file structure
@@ -63,6 +63,9 @@ You must install Ghostscript first:
 1. Open Terminal
 2. Run: `brew install ghostscript`
 3. Download and Run GhostPDF+
+
+### Mac App Store
+🍎 **Coming Soon!** A sandboxed Mac App Store version is in development.
 
 > **📦 Note:** GhostPDF+ v2.0+ includes Ghostscript binaries (AGPL license). The app is ~40MB larger but requires no external dependencies.
 

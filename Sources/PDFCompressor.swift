@@ -78,7 +78,12 @@ class PDFCompressor {
                 let baseVer = "\(gsBase)/\(versionDir)"
                 // Include Init, lib, flags, fonts. Critical: Resource/Init is where gs_init.ps lives.
                 let gsLibPath = "\(baseVer)/Resource/Init:\(baseVer)/lib:\(baseVer)/fonts"
-                task.environment = ProcessInfo.processInfo.environment.merging(["GS_LIB": gsLibPath]) { (_, new) in new }
+                
+                var env = ProcessInfo.processInfo.environment
+                env["GS_LIB"] = gsLibPath
+                // Ensure TMPDIR is set to the sandboxed temporary directory
+                env["TMPDIR"] = FileManager.default.temporaryDirectory.path
+                task.environment = env
             }
         }
         
@@ -297,17 +302,22 @@ class PDFCompressor {
             if let pageDict = page.dictionary {
                 var resDict: CGPDFDictionaryRef? = nil
                 if CGPDFDictionaryGetDictionary(pageDict, "Resources", &resDict), let resources = resDict {
-                    var xObjDict: CGPDFDictionaryRef? = nil
-                    if CGPDFDictionaryGetDictionary(resources, "XObject", &xObjDict), let xObjects = xObjDict {
-                        let contextPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(context).toOpaque())
-                        CGPDFDictionaryApplyFunction(xObjects, imageExtractionCallback, contextPtr)
-                    }
+                    // Scan XObjects recursively
+                    scanXObjects(resources: resources, context: context)
                 }
             }
             
             progress(Double(i) / Double(pageCount))
             // Yield to main thread
             await Task.yield()
+        }
+    }
+    
+    private static func scanXObjects(resources: CGPDFDictionaryRef, context: ImageExtractionContext) {
+        var xObjDict: CGPDFDictionaryRef? = nil
+        if CGPDFDictionaryGetDictionary(resources, "XObject", &xObjDict), let xObjects = xObjDict {
+            let contextPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(context).toOpaque())
+            CGPDFDictionaryApplyFunction(xObjects, formAndImageCallback, contextPtr)
         }
     }
 
@@ -438,8 +448,25 @@ class PDFCompressor {
         task.executableURL = URL(fileURLWithPath: args[0])
         task.arguments = Array(args.dropFirst())
         
+        // Set GS_LIB environment variable for bundled Ghostscript
+        if let resourcePath = Bundle.main.resourcePath {
+            let gsBase = "\(resourcePath)/ghostscript/share/ghostscript"
+            if let items = try? FileManager.default.contentsOfDirectory(atPath: gsBase),
+               let versionDir = items.first(where: { $0.range(of: "^\\d+\\.\\d+(\\.\\d+)?$", options: .regularExpression) != nil }) {
+                
+                let baseVer = "\(gsBase)/\(versionDir)"
+                let gsLibPath = "\(baseVer)/Resource/Init:\(baseVer)/lib:\(baseVer)/fonts"
+                
+                var env = ProcessInfo.processInfo.environment
+                env["GS_LIB"] = gsLibPath
+                env["TMPDIR"] = FileManager.default.temporaryDirectory.path
+                task.environment = env
+            }
+        }
+        
         let pipe = Pipe()
         task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
         
         try task.run()
         task.waitUntilExit()
@@ -556,28 +583,8 @@ class PDFCompressor {
         args.append(input.path)
         
         progressHandler(0.3)
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: args[0])
-        task.arguments = Array(args.dropFirst())
-        
-        let errorPipe = Pipe()
-         task.standardError = errorPipe
-         task.standardOutput = FileHandle.nullDevice
-         
-         try task.run()
-         task.waitUntilExit()
-         
-         progressHandler(0.9)
-         
-         if task.terminationStatus != 0 {
-             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-             let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-              if errorMessage.contains("Password") || errorMessage.contains("This file requires a password") {
-                 throw CompressionError.passwordRequired
-             }
-             throw CompressionError.ghostscriptFailed(errorMessage)
-         }
-         progressHandler(1.0)
+        try await executeGhostscript(args: args)
+        progressHandler(1.0)
     }
 
     // MARK: - Delete Pages
@@ -1067,6 +1074,35 @@ class ImageExtractionContext {
     }
 }
 
+func formAndImageCallback(key: UnsafePointer<Int8>, value: CGPDFObjectRef, info: UnsafeMutableRawPointer?) {
+    guard let info = info else { return }
+    let context = Unmanaged<ImageExtractionContext>.fromOpaque(info).takeUnretainedValue()
+    
+    var stream: CGPDFStreamRef? = nil
+    if CGPDFObjectGetValue(value, .stream, &stream), let stream = stream {
+        let dict: CGPDFDictionaryRef? = CGPDFStreamGetDictionary(stream)
+        var subtype: UnsafePointer<Int8>? = nil
+        
+        if let dict = dict, CGPDFDictionaryGetName(dict, "Subtype", &subtype), let subtype = subtype {
+            let subtypeString = String(cString: subtype)
+            
+            if subtypeString == "Image" {
+                // Delegate to imageExtractionCallback
+                imageExtractionCallback(key: key, value: value, info: info)
+            } else if subtypeString == "Form" {
+                // This is a Form XObject - scan its resources for more images
+                var formResDict: CGPDFDictionaryRef? = nil
+                if CGPDFDictionaryGetDictionary(dict, "Resources", &formResDict), let formResources = formResDict {
+                    var xObjDict: CGPDFDictionaryRef? = nil
+                    if CGPDFDictionaryGetDictionary(formResources, "XObject", &xObjDict), let xObjects = xObjDict {
+                        CGPDFDictionaryApplyFunction(xObjects, formAndImageCallback, info)
+                    }
+                }
+            }
+        }
+    }
+}
+
 func imageExtractionCallback(key: UnsafePointer<Int8>, value: CGPDFObjectRef, info: UnsafeMutableRawPointer?) {
     guard let info = info else { return }
     let context = Unmanaged<ImageExtractionContext>.fromOpaque(info).takeUnretainedValue()
@@ -1080,13 +1116,38 @@ func imageExtractionCallback(key: UnsafePointer<Int8>, value: CGPDFObjectRef, in
         if let dict = dict, CGPDFDictionaryGetName(dict, "Subtype", &subtype), let subtype = subtype {
             let subtypeString = String(cString: subtype)
             if subtypeString == "Image" {
-                 // Check Filter is DCTDecode (JPEG)
-                 var filter: UnsafePointer<Int8>? = nil
+                 // Check Filter - can be a name or an array
                  var isJpeg = false
+                 var isFlate = false
+                 var isJpx = false
+                 
+                 // Try as name first
+                 var filter: UnsafePointer<Int8>? = nil
                  if CGPDFDictionaryGetName(dict, "Filter", &filter), let filter = filter {
                      let filterName = String(cString: filter)
                      if filterName == "DCTDecode" {
                          isJpeg = true
+                     } else if filterName == "FlateDecode" {
+                         isFlate = true
+                     } else if filterName == "JPXDecode" {
+                         isJpx = true
+                     }
+                 } else {
+                     // Try as array (e.g., [/FlateDecode] or [/DCTDecode])
+                     var filterArray: CGPDFArrayRef? = nil
+                     if CGPDFDictionaryGetArray(dict, "Filter", &filterArray), let arr = filterArray {
+                         // Check first filter in the array
+                         var firstFilter: UnsafePointer<Int8>? = nil
+                         if CGPDFArrayGetCount(arr) > 0, CGPDFArrayGetName(arr, 0, &firstFilter), let ff = firstFilter {
+                             let filterName = String(cString: ff)
+                             if filterName == "DCTDecode" {
+                                 isJpeg = true
+                             } else if filterName == "FlateDecode" {
+                                 isFlate = true
+                             } else if filterName == "JPXDecode" {
+                                 isJpx = true
+                             }
+                         }
                      }
                  }
                  
@@ -1098,8 +1159,198 @@ func imageExtractionCallback(key: UnsafePointer<Int8>, value: CGPDFObjectRef, in
                          try? (data as Data).write(to: url)
                          context.imageIndexOnPage += 1
                      }
+                 } else if isJpx {
+                     // JPEG 2000 - save as .jp2
+                     var format: CGPDFDataFormat = .raw
+                     if let data = CGPDFStreamCopyData(stream, &format) {
+                         let filename = "Page\(context.currentPage)_Img\(context.imageIndexOnPage).jp2"
+                         let url = context.outputDir.appendingPathComponent(filename)
+                         try? (data as Data).write(to: url)
+                         context.imageIndexOnPage += 1
+                     }
+                 } else if isFlate {
+                     // Try to construct an image from raw samples
+                     if let image = createImageFromStream(stream: stream, dict: dict) {
+                         let filename = "Page\(context.currentPage)_Img\(context.imageIndexOnPage).png"
+                         let url = context.outputDir.appendingPathComponent(filename)
+                         if let data = imageTiffData(image), let bitmap = NSBitmapImageRep(data: data) {
+                             var finalBitmap = bitmap
+                             // Convert CMYK to RGB for PNG compatibility
+                             if bitmap.colorSpace.colorSpaceModel == .cmyk {
+                                 if let converted = bitmap.converting(to: NSColorSpace.sRGB, renderingIntent: .default) {
+                                     finalBitmap = converted
+                                 }
+                             }
+                             
+                             if let png = finalBitmap.representation(using: .png, properties: [:]) {
+                                 try? png.write(to: url)
+                                 context.imageIndexOnPage += 1
+                             }
+                         }
+                     }
+                 } else if !isJpeg && !isFlate && !isJpx {
+                     // Unfiltered raw image data - also try to construct
+                     if let image = createImageFromStream(stream: stream, dict: dict) {
+                         let filename = "Page\(context.currentPage)_Img\(context.imageIndexOnPage).png"
+                         let url = context.outputDir.appendingPathComponent(filename)
+                         if let data = imageTiffData(image), let bitmap = NSBitmapImageRep(data: data) {
+                             var finalBitmap = bitmap
+                             if bitmap.colorSpace.colorSpaceModel == .cmyk {
+                                 if let converted = bitmap.converting(to: NSColorSpace.sRGB, renderingIntent: .default) {
+                                     finalBitmap = converted
+                                 }
+                             }
+                             if let png = finalBitmap.representation(using: .png, properties: [:]) {
+                                 try? png.write(to: url)
+                                 context.imageIndexOnPage += 1
+                             }
+                         }
+                     }
                  }
             }
         }
     }
+}
+
+func createImageFromStream(stream: CGPDFStreamRef, dict: CGPDFDictionaryRef) -> CGImage? {
+    var width: CGPDFInteger = 0
+    var height: CGPDFInteger = 0
+    var bpc: CGPDFInteger = 0 // BitsPerComponent
+    
+    guard CGPDFDictionaryGetInteger(dict, "Width", &width),
+          CGPDFDictionaryGetInteger(dict, "Height", &height),
+          CGPDFDictionaryGetInteger(dict, "BitsPerComponent", &bpc) else { return nil }
+    
+    // ColorSpace
+    var csObj: CGPDFObjectRef? = nil
+    var colorSpace: CGColorSpace? = nil
+    var componentCount = 0
+    
+    if CGPDFDictionaryGetObject(dict, "ColorSpace", &csObj), let csObj = csObj {
+        // Try getting name first (DeviceRGB, DeviceGray, DeviceCMYK)
+        var name: UnsafePointer<Int8>? = nil
+        if CGPDFObjectGetValue(csObj, .name, &name), let name = name {
+            let csName = String(cString: name)
+            if csName == "DeviceRGB" {
+                colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+                componentCount = 3
+            } else if csName == "DeviceGray" {
+                colorSpace = CGColorSpace(name: CGColorSpace.linearGray)
+                componentCount = 1
+            } else if csName == "DeviceCMYK" {
+                 colorSpace = CGColorSpace(name: CGColorSpace.genericCMYK)
+                 componentCount = 4
+            }
+        } else {
+            // ColorSpace is often an Array, e.g., [/ICCBased <stream>] or [/Indexed ...]
+            var csArray: CGPDFArrayRef? = nil
+            if CGPDFObjectGetValue(csObj, .array, &csArray), let arr = csArray, CGPDFArrayGetCount(arr) >= 1 {
+                var csTypeName: UnsafePointer<Int8>? = nil
+                if CGPDFArrayGetName(arr, 0, &csTypeName), let csType = csTypeName {
+                    let typeName = String(cString: csType)
+                    if typeName == "ICCBased" {
+                        // ICCBased: [/ICCBased <stream>]
+                        // Get the stream to find "N" (number of components)
+                        var iccStream: CGPDFStreamRef? = nil
+                        if CGPDFArrayGetCount(arr) >= 2, CGPDFArrayGetStream(arr, 1, &iccStream), let iccS = iccStream {
+                            if let iccDict = CGPDFStreamGetDictionary(iccS) {
+                                var n: CGPDFInteger = 0
+                                if CGPDFDictionaryGetInteger(iccDict, "N", &n) {
+                                    componentCount = Int(n)
+                                    if componentCount == 1 {
+                                         colorSpace = CGColorSpace(name: CGColorSpace.linearGray)
+                                    } else if componentCount == 3 {
+                                         colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+                                    } else if componentCount == 4 {
+                                         colorSpace = CGColorSpace(name: CGColorSpace.genericCMYK)
+                                    }
+                                }
+                            }
+                        }
+                    } else if typeName == "Indexed" {
+                        // Indexed color space: [/Indexed base hival lookup]
+                        // Extract the base color space
+                        if CGPDFArrayGetCount(arr) >= 2 {
+                            var baseName: UnsafePointer<Int8>? = nil
+                            if CGPDFArrayGetName(arr, 1, &baseName), let base = baseName {
+                                let baseCS = String(cString: base)
+                                if baseCS == "DeviceRGB" {
+                                    colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+                                    componentCount = 1 // Indexed uses 1 component (index into palette)
+                                } else if baseCS == "DeviceGray" {
+                                    colorSpace = CGColorSpace(name: CGColorSpace.linearGray)
+                                    componentCount = 1
+                                } else if baseCS == "DeviceCMYK" {
+                                    colorSpace = CGColorSpace(name: CGColorSpace.genericCMYK)
+                                    componentCount = 1
+                                }
+                            } else {
+                                // Base might be an array itself (e.g., ICCBased)
+                                var baseArray: CGPDFArrayRef? = nil
+                                if CGPDFArrayGetArray(arr, 1, &baseArray), let bArr = baseArray, CGPDFArrayGetCount(bArr) >= 1 {
+                                    var baseTypeName: UnsafePointer<Int8>? = nil
+                                    if CGPDFArrayGetName(bArr, 0, &baseTypeName), let bType = baseTypeName {
+                                        let bTypeName = String(cString: bType)
+                                        if bTypeName == "ICCBased" {
+                                            // Assume RGB for simplicity
+                                            colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+                                            componentCount = 1
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if typeName == "CalRGB" || typeName == "CalGray" {
+                        // Calibrated color spaces
+                        if typeName == "CalRGB" {
+                            colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+                            componentCount = 3
+                        } else {
+                            colorSpace = CGColorSpace(name: CGColorSpace.linearGray)
+                            componentCount = 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    guard let cs = colorSpace else { return nil }
+    
+    var format: CGPDFDataFormat = .raw
+    guard let data = CGPDFStreamCopyData(stream, &format) else { return nil }
+    let properties = (data as Data)
+    
+    let provider = CGDataProvider(data: properties as CFData)
+    
+    let bpp = bpc * componentCount
+    let bytesPerRow = (Int(width) * bpp + 7) / 8
+    
+    var bitmapInfo: CGBitmapInfo = []
+    if componentCount == 1 {
+         bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+    } else {
+         bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+    }
+    
+    // Handling Decode array (inverse colors) ? Skipped for simplicity of "Enhancement" vs "Full Viewer"
+    
+    return CGImage(
+        width: Int(width),
+        height: Int(height),
+        bitsPerComponent: Int(bpc),
+        bitsPerPixel: bpp,
+        bytesPerRow: bytesPerRow,
+        space: cs,
+        bitmapInfo: bitmapInfo,
+        provider: provider!,
+        decode: nil,
+        shouldInterpolate: true,
+        intent: .defaultIntent
+    )
+}
+
+func imageTiffData(_ image: CGImage) -> Data? {
+    let rep = NSBitmapImageRep(cgImage: image)
+    return rep.representation(using: .tiff, properties: [:])
 }
