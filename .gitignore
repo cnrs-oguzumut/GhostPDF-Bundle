@@ -11,3 +11,4 @@ build-notarized.sh
 build-lite.sh
 build-bundled-notarized.sh
 build-sandboxed.sh
+build-mas.sh
