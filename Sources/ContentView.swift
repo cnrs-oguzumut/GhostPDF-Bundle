@@ -77,6 +77,11 @@ struct ContentView: View {
     // Reorder State
     @State private var reorderPageOrder: [Int] = []
     
+    // AI Summary State
+    @State private var showingSummarySheet: Bool = false
+    @State private var summaryText: String = ""
+    @State private var isSummarizing: Bool = false
+    
     struct PDFFile: Identifiable, Equatable {
         let id = UUID()
         let url: URL
@@ -216,6 +221,44 @@ struct ContentView: View {
                     .frame(minWidth: 800, minHeight: 600)
             }
         }
+        .sheet(isPresented: $showingSummarySheet) {
+            VStack(spacing: 16) {
+                HStack {
+                    Text("AI Summary")
+                        .font(.title2.bold())
+                    Spacer()
+                    Button("Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(summaryText, forType: .string)
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Close") {
+                        showingSummarySheet = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                
+                if isSummarizing {
+                    ProgressView("Analyzing PDF...")
+                        .padding()
+                } else if summaryText.isEmpty {
+                    Text("No text could be extracted from this PDF.")
+                        .foregroundColor(.secondary)
+                        .padding()
+                } else {
+                    ScrollView {
+                        Text(summaryText)
+                            .textSelection(.enabled)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(8)
+                }
+            }
+            .padding()
+            .frame(minWidth: 500, minHeight: 400)
+        }
         .alert(selectedTab == 4 ? "Operation Complete" : "Batch Complete", isPresented: $showingResult) {
             Button("Reveal in Finder") {
                 if let first = lastResults.first {
@@ -343,6 +386,7 @@ struct ContentView: View {
                 case .pageNumber: return "Add Page Numbers"
                 case .reorder: return "Reorder Pages"
                 case .resizeA4: return "Resize All to A4"
+                case .summarize: return "Summarize Files"
                 }
             }
             switch selectedTool {
@@ -354,6 +398,7 @@ struct ContentView: View {
             case .pageNumber: return "Add Page Numbers"
             case .reorder: return "Reorder Pages"
             case .resizeA4: return "Resize to A4"
+            case .summarize: return "Summarize PDF"
             }
         }
         if selectedTab == 4 {
@@ -391,11 +436,36 @@ struct ContentView: View {
                 reorderPages()
             case .resizeA4:
                 resizeToA4()
+            case .summarize:
+                performSummarize()
             }
         } else if selectedTab == 4 {
             performAdvancedAction()
         } else {
             compress()
+        }
+    }
+    
+    private func performSummarize() {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard let file = checkedFiles.first else { return }
+        
+        isSummarizing = true
+        summaryText = ""
+        showingSummarySheet = true
+        
+        Task {
+            if let summary = summarizePDF(url: file.url, maxSentences: 7, password: nil) {
+                await MainActor.run {
+                    summaryText = summary
+                    isSummarizing = false
+                }
+            } else {
+                await MainActor.run {
+                    summaryText = ""
+                    isSummarizing = false
+                }
+            }
         }
     }
     
@@ -2279,6 +2349,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
     case pageNumber
     case reorder
     case resizeA4
+    case summarize
 
     var id: String { rawValue }
 
@@ -2292,6 +2363,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
         case .pageNumber: return "Page Numbers"
         case .reorder: return "Reorder"
         case .resizeA4: return "Resize to A4"
+        case .summarize: return "AI Summary"
         }
     }
 
@@ -2305,6 +2377,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
         case .pageNumber: return "number.circle"
         case .reorder: return "arrow.up.arrow.down"
         case .resizeA4: return "doc.viewfinder"
+        case .summarize: return "text.quote"
         }
     }
     var description: String {
@@ -2317,6 +2390,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
         case .rotateDelete: return "Rotate pages or delete specific pages."
         case .reorder: return "Reorder pages via drag-and-drop."
         case .resizeA4: return "Scale all pages to standard A4 size (210x297mm)."
+        case .summarize: return "AI-powered text summarization (offline)."
         }
     }
 }

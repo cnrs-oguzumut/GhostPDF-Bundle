@@ -289,7 +289,7 @@ func createImageFromStream(stream: CGPDFStreamRef, dict: CGPDFDictionaryRef) -> 
         }
     }
     
-    var bitmapInfo: CGBitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+    let bitmapInfo: CGBitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
     
     return CGImage(
         width: Int(width),
@@ -310,6 +310,193 @@ func imageTiffData(_ image: CGImage) -> Data? {
     let rep = NSBitmapImageRep(cgImage: image)
     return rep.representation(using: .tiff, properties: [:])
 }
+
+// MARK: - AI Text Extraction & Summarization
+import NaturalLanguage
+
+/// Extract all text content from a PDF
+func extractTextFromPDF(url: URL, password: String? = nil) -> String? {
+    guard let doc = PDFDocument(url: url) else { return nil }
+    
+    if doc.isEncrypted {
+        if let pass = password {
+            doc.unlock(withPassword: pass)
+        }
+    }
+    
+    if doc.isLocked { return nil }
+    
+    var fullText = ""
+    for i in 0..<doc.pageCount {
+        if let page = doc.page(at: i), let pageText = page.string {
+            fullText += pageText + "\n\n"
+        }
+    }
+    
+    return fullText.isEmpty ? nil : fullText
+}
+
+/// Summarize text using NaturalLanguage framework (extractive summarization)
+/// Summarize text using NaturalLanguage semantic embeddings
+func summarizeText(_ text: String, maxSentences: Int = 5) -> String {
+    // 1. Clean Text: Remove probable headers/footers (lines that appear too frequently or are just numbers)
+    var lines = text.components(separatedBy: .newlines)
+    let totalLines = lines.count
+    
+    // Count line occurrences to find repeated headers/footers
+    var lineCounts: [String: Int] = [:]
+    for line in lines {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            lineCounts[trimmed, default: 0] += 1
+        }
+    }
+    
+    // Filter out lines that appear on >20% of pages (assuming ~30 lines/page) or are just page numbers
+    let probabilityThreshold = max(2, totalLines / 30 / 5) 
+    
+    lines = lines.filter { line in
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return false }
+        
+        // Remove lines that are just numbers (likely page numbers)
+        if Int(trimmed) != nil || trimmed.range(of: #"^Page \d+$"#, options: .regularExpression) != nil {
+            return false
+        }
+        
+        // Remove repeated headers/footers
+        if let count = lineCounts[trimmed], count > probabilityThreshold {
+            return false
+        }
+        
+        return true
+    }
+    
+    let cleanText = lines.joined(separator: " ")
+    
+    // 2. Identify Sentences
+    let tokenizer = NLTokenizer(unit: .sentence)
+    tokenizer.string = cleanText
+    
+    var uniqueSentences: [String] = []
+    var seenSentences: Set<String> = []
+    
+    tokenizer.enumerateTokens(in: cleanText.startIndex..<cleanText.endIndex) { range, _ in
+        let sentence = String(cleanText[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Quality filter: length > 30 chars, starts with capital letter
+        if sentence.count > 30, sentence.first?.isUppercase == true, !seenSentences.contains(sentence) {
+            uniqueSentences.append(sentence)
+            seenSentences.insert(sentence)
+        }
+        return true
+    }
+    
+    if uniqueSentences.isEmpty { return text }
+    if uniqueSentences.count <= maxSentences { return uniqueSentences.joined(separator: "\n\n") }
+    
+    // 3. Semantic Analysis using NLEmbedding
+    guard let embedding = NLEmbedding.sentenceEmbedding(for: .english) else {
+        // Fallback to simple first-N sentences if embedding invalid
+        return uniqueSentences.prefix(maxSentences).joined(separator: "\n\n")
+    }
+    
+    // Calculate document centroid (average meaning)
+    var centroidVector: [Double] = []
+    var vectorCount = 0
+    
+    // Cache sentence vectors
+    var sentenceVectors: [[Double]?] = Array(repeating: nil, count: uniqueSentences.count)
+    
+    for (i, sentence) in uniqueSentences.enumerated() {
+        if let vector = embedding.vector(for: sentence) {
+            sentenceVectors[i] = vector
+            if centroidVector.isEmpty {
+                centroidVector = vector
+            } else {
+                for j in 0..<vector.count {
+                    centroidVector[j] += vector[j]
+                }
+            }
+            vectorCount += 1
+        }
+    }
+    
+    if vectorCount == 0 { return uniqueSentences.prefix(maxSentences).joined(separator: "\n\n") }
+    
+    // Average the centroid
+    for j in 0..<centroidVector.count {
+        centroidVector[j] /= Double(vectorCount)
+    }
+    
+    // 4. Score phrases by distance to centroid (Centrality)
+    var scoredSentences: [(index: Int, sentence: String, score: Double)] = []
+    
+    for (i, sentence) in uniqueSentences.enumerated() {
+        if let vector = sentenceVectors[i] {
+            // Cosine distance calculation manually since NLEmbedding.distance expects Strings
+            let dotProduct = zip(vector, centroidVector).map(*).reduce(0, +)
+            let magA = sqrt(vector.map { $0 * $0 }.reduce(0, +))
+            let magB = sqrt(centroidVector.map { $0 * $0 }.reduce(0, +))
+            let cosineSim = dotProduct / (magA * magB)
+            
+            // Distance = 1 - CosineSimilarity (approx)
+            // But we can just use CosineSimilarity directly for scoring
+            // Higher Cosine Similarity = Closer to centroid = Better Centrality
+            
+            // Boost first paragraph sentences slightly as they are usually introductory
+            let boost = (i < 3) ? 1.2 : 1.0
+            let score = cosineSim * boost
+            
+            scoredSentences.append((index: i, sentence: sentence, score: score))
+        }
+    }
+    
+    // 5. Select diversity (don't pick sentences that are too similar to already picked ones)
+    scoredSentences.sort { $0.score > $1.score }
+    
+    var selectedIndices: [Int] = []
+    var selectedVectors: [[Double]] = []
+    
+    for candidate in scoredSentences {
+        if selectedIndices.count >= maxSentences { break }
+        
+        let candidateVector = sentenceVectors[candidate.index]!
+        
+        // Diversity check
+        var isDistinct = true
+        for existingVector in selectedVectors {
+             let dotProduct = zip(candidateVector, existingVector).map(*).reduce(0, +)
+             let magA = sqrt(candidateVector.map { $0 * $0 }.reduce(0, +))
+             let magB = sqrt(existingVector.map { $0 * $0 }.reduce(0, +))
+             let similarity = dotProduct / (magA * magB)
+            
+            if similarity > 0.85 { // Threshold: If > 85% similar, skip it
+                isDistinct = false
+                break
+            }
+        }
+        
+        if isDistinct {
+            selectedIndices.append(candidate.index)
+            selectedVectors.append(candidateVector)
+        }
+    }
+    
+    // Sort by original position
+    selectedIndices.sort()
+    
+    return selectedIndices.map { uniqueSentences[$0] }.joined(separator: "\n\n")
+}
+
+/// Convenience: Summarize a PDF file directly
+func summarizePDF(url: URL, maxSentences: Int = 5, password: String? = nil) -> String? {
+    guard let text = extractTextFromPDF(url: url, password: password) else {
+        return nil
+    }
+    return summarizeText(text, maxSentences: maxSentences)
+}
+
 enum CompressionEngine {
     case ghostscript
 }
