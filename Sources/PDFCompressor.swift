@@ -2376,7 +2376,13 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
                 group.addTask {
                     // Check cancellation inside task
                     if isCancelledCheck?() == true { return (item.index, nil) }
-                    
+
+                    // Parse text first
+                    guard let parsed = parseReferenceText(item.cleanedRef) else {
+                        // If we can't even parse parsing offline, we can't do much
+                        return (item.index, nil)
+                    }
+
                     // Try CrossRef first
                     if let bibtex = await queryBibTeXWithRawText(item.cleanedRef, options: options) {
                         print("DEBUG - [CrossRef] Found: \(item.cleanedRef.prefix(40))...")
@@ -2389,8 +2395,12 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
                         return (item.index, bibtex)
                     }
                     
-                    print("DEBUG - No match found for: \(item.cleanedRef.prefix(40))...")
-                    return (item.index, nil)
+                    // Final Fallback: Use Offline Parsing
+                    // This is crucial for Books where online databases might return Reviews instead
+                    // or for references not indexed online.
+                    let offlineBib = constructBibTeXFromParsed(parsed)
+                    print("DEBUG - [Offline] Generated fallback for: \(item.cleanedRef.prefix(40))...")
+                    return (item.index, offlineBib)
                 }
             }
             
@@ -3100,8 +3110,7 @@ private func buildBibTeXFromJSON(_ json: [String: Any], options: BibTeXFormatOpt
 }
 
 
-/// Parse reference text to extract metadata
-private func parseReferenceText(_ text: String) -> (authors: String, title: String, journal: String?, year: String?)? {
+private func parseReferenceText(_ text: String) -> (authors: String, title: String, journal: String?, year: String?, publisher: String?, address: String?, type: String?)? {
     // Remove numbering
     let cleaned = text.replacingOccurrences(of: #"^\[\d+\]|\d+\."#, with: "", options: .regularExpression)
         .trimmingCharacters(in: .whitespaces)
@@ -3143,42 +3152,78 @@ private func parseReferenceText(_ text: String) -> (authors: String, title: Stri
     // Build authors from detected person names
     var authors = personNames.prefix(6).joined(separator: " ")
     
+    // Check for Book characteristics
+    var type: String? = "article"
+    var publisher: String? = nil
+    var address: String? = nil
+    
+    let isBook = cleaned.range(of: #"(University Press|Wiley|Sons|Springer|Academic Press|New York|Cambridge|London|Oxford)"#, options: [.regularExpression, .caseInsensitive]) != nil
+    if isBook { type = "book" }
+
     // Fallback to traditional parsing if NL didn't find names
     if authors.isEmpty {
         let parts = cleaned.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespaces) }
+        // Author Cleaning: Remove "editors", "(Eds)"
         if parts.count >= 1 {
-            authors = parts[0]
+            var rawAuthors = parts[0]
+            rawAuthors = rawAuthors.replacingOccurrences(of: #",?\s*editors"#, with: "", options: [.regularExpression, .caseInsensitive])
+            rawAuthors = rawAuthors.replacingOccurrences(of: #",?\s*\(Eds\)"#, with: "", options: [.regularExpression, .caseInsensitive])
+            authors = rawAuthors
         }
     }
     
     // Extract title - usually in quotes or after author section
     var title = ""
+    var journal: String? = organizations.first
+    
     if let quoteMatch = cleaned.range(of: #""[^"]+""#, options: .regularExpression) {
         title = String(cleaned[quoteMatch]).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
     } else {
-        // Fall back to period-based splitting
-        let parts = cleaned.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespaces) }
-        if parts.count > 1 {
-            title = parts[1]
-        }
-    }
-    
-    // Journal might be in organizations or third part
-    var journal: String? = organizations.first
-    if journal == nil {
-        let parts = cleaned.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespaces) }
-        if parts.count > 2 {
-            journal = parts[2]
+        // Fall back to period-based splitting with Edition awareness
+        let parts = cleaned.components(separatedBy: CharacterSet(charactersIn: ".?!")).filter { $0.count > 3 } // split by punctuation
+        if parts.count >= 2 {
+             // Title is second part
+             title = parts[1].trimmingCharacters(in: .whitespaces)
+             
+             if parts.count >= 3 {
+                 // Remaining parts could be Edition, Publisher, Journal
+                 for i in 2..<parts.count {
+                     let part = parts[i].trimmingCharacters(in: .whitespaces)
+                     
+                     // Skip Edition info
+                     let editionPattern = #"\b(\d+(st|nd|rd|th)?\s+(edn|ed|edition))\b"#
+                     if part.range(of: editionPattern, options: [.regularExpression, .caseInsensitive]) != nil {
+                         continue
+                     }
+                     
+                     // Check for Publisher Info
+                     if part.contains(":") && isBook {
+                         let pubParts = part.components(separatedBy: ":")
+                         if pubParts.count > 1 {
+                             address = pubParts[0].trimmingCharacters(in: .whitespaces)
+                             publisher = pubParts[1].trimmingCharacters(in: .whitespaces)
+                             break
+                         }
+                     } else if isBook && publisher == nil {
+                         if part.range(of: #"(Press|Wiley|Sons|Springer)"#, options: .caseInsensitive) != nil {
+                             publisher = part
+                             break
+                         }
+                     } else {
+                         if journal == nil { journal = part }
+                     }
+                 }
+             }
         }
     }
     
     guard !authors.isEmpty || !title.isEmpty else { return nil }
     
-    return (authors: authors, title: title, journal: journal, year: extractedYear)
+    return (authors: authors, title: title, journal: journal, year: extractedYear, publisher: publisher, address: address, type: type)
 }
 
 /// Query CrossRef API using metadata
-private func queryWithBibTeXFromMetadata(_ metadata: (authors: String, title: String, journal: String?, year: String?)) async -> String? {
+private func queryWithBibTeXFromMetadata(_ metadata: (authors: String, title: String, journal: String?, year: String?, publisher: String?, address: String?, type: String?)) async -> String? {
     // Build query using bibliographic query for best results
     var queryParts: [String] = []
     
@@ -3202,9 +3247,12 @@ private func queryWithBibTeXFromMetadata(_ metadata: (authors: String, title: St
         queryParts.append(year)
     }
     
-    // Add journal if available
+    // Add journal or publisher if available
     if let journal = metadata.journal, !journal.isEmpty {
         queryParts.append(journal.prefix(20).description)
+    }
+    if let publisher = metadata.publisher, !publisher.isEmpty {
+        queryParts.append(publisher.prefix(20).description)
     }
     
     let query = queryParts.joined(separator: " ")
@@ -3226,6 +3274,24 @@ private func queryWithBibTeXFromMetadata(_ metadata: (authors: String, title: St
            let items = message["items"] as? [[String: Any]],
            let first = items.first,
            let doi = first["DOI"] as? String {
+             
+             // Validation: Check if the returned item's author matches our offline author
+             // This prevents "Salje" (Book) -> "Price" (Book Review) mismatches
+             if let type = metadata.type, type == "book" {
+                 if let authorsList = first["author"] as? [[String: Any]],
+                    let firstOnlineAuthor = authorsList.first,
+                    let onlineFamily = firstOnlineAuthor["family"] as? String {
+                     
+                     let offlineFamily = metadata.authors.components(separatedBy: CharacterSet(charactersIn: " ,.")).first ?? metadata.authors
+                     
+                     // Simple containment check (case insensitive)
+                     if !onlineFamily.localizedCaseInsensitiveContains(offlineFamily) && !offlineFamily.localizedCaseInsensitiveContains(onlineFamily) {
+                         print("DEBUG - Author mismatch for book (Offline: \(offlineFamily) vs Online: \(onlineFamily)). Ignoring online result to avoid Reviews.")
+                         return nil
+                     }
+                 }
+             }
+
             return await fetchBibTeXFromCrossRef(doi: doi)
         }
     } catch {
@@ -3236,17 +3302,31 @@ private func queryWithBibTeXFromMetadata(_ metadata: (authors: String, title: St
 }
 
 /// Construct basic BibTeX from parsed data
-private func constructBibTeXFromParsed(_ metadata: (authors: String, title: String, journal: String?, year: String?)) -> String {
+private func constructBibTeXFromParsed(_ metadata: (authors: String, title: String, journal: String?, year: String?, publisher: String?, address: String?, type: String?)) -> String {
     let key = (metadata.authors.components(separatedBy: " ").first ?? "ref") + (metadata.year ?? "")
-    var bib = "@article{\(key),\n"
+    
+    let entryType = metadata.type ?? "article"
+    
+    var bib = "@\(entryType){\(key),\n"
     bib += "    author = {\(metadata.authors)},\n"
     bib += "    title = {\(metadata.title)}"
     if let year = metadata.year {
         bib += ",\n    year = {\(year)}"
     }
-    if let journal = metadata.journal {
-        bib += ",\n    journal = {\(journal)}"
+    
+    if entryType == "book" {
+        if let publisher = metadata.publisher {
+             bib += ",\n    publisher = {\(publisher)}"
+        }
+        if let address = metadata.address {
+             bib += ",\n    address = {\(address)}"
+        }
+    } else {
+        if let journal = metadata.journal {
+            bib += ",\n    journal = {\(journal)}"
+        }
     }
+
     bib += ",\n    note = {Extracted from references, verification failed}\n"
     bib += "}"
     return bib
