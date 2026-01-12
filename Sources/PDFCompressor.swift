@@ -2240,8 +2240,8 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
         }
         
         // Name-based patterns: Author, A., or Author, A.B.,
-        // Improved to handle accents and lowercase prefixes (de, van, etc.)
-        let authorPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)\p{L}+,\s+\p{Lu}\."#
+        // Improved to handle accents, hyphens, and lowercase prefixes (de, van, etc.)
+        let authorPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)[\p{L}-]+,\s+\p{Lu}\."#
         if line.range(of: authorPattern, options: [.regularExpression, .caseInsensitive]) != nil && line.count > 15 {
             nameBasedVotes += 1
         }
@@ -2280,12 +2280,12 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
             let isContinuation = continuationWords.contains { trimmedLine.hasPrefix($0) }
 
             // Check if line looks like author name format: "Lastname, F." or "Lastname, F.G."
-            // Supports accents and common lowercase prefixes
-            let authorPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)\p{L}+,\s+\p{Lu}\."#
+            // Supports accents, hyphens, and common lowercase prefixes
+            let authorPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)[\p{L}-]+,\s+\p{Lu}\."#
             let looksLikeAuthor = trimmedLine.range(of: authorPattern, options: [.regularExpression, .caseInsensitive]) != nil
 
             // Additional check: line starts with multiple capital letters (like "Bourdin B, ")
-            let multiCapsPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)\p{L}+\s+\p{Lu}"#
+            let multiCapsPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)[\p{L}-]+\s+\p{Lu}"#
             let hasMultipleCaps = trimmedLine.range(of: multiCapsPattern, options: [.regularExpression, .caseInsensitive]) != nil
 
             // Start new reference if it looks like author name and current ref is substantial
