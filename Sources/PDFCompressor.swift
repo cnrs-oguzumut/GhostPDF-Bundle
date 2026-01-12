@@ -450,7 +450,8 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
     }
 
     // Always do offline extraction first (your clean format)
-    var offlineBib = extractBibTeXOffline(url: url, doc: doc, extractedDOI: doi)
+    // Always do offline extraction first (your clean format)
+    var offlineBib = extractBibTeXOffline(url: url, doc: doc, extractedDOI: doi, options: options)
 
     // If online lookup is allowed and we have a DOI, enhance with metadata from CrossRef
     if !doi.isEmpty && allowOnline, let bib = offlineBib {
@@ -589,7 +590,7 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
 }
 
 /// Extract BibTeX metadata from PDF (offline version)
-private func extractBibTeXOffline(url: URL, doc: PDFDocument, extractedDOI: String) -> String? {
+private func extractBibTeXOffline(url: URL, doc: PDFDocument, extractedDOI: String, options: BibTeXFormatOptions = BibTeXFormatOptions()) -> String? {
     let attrs = doc.documentAttributes
 
     var title = attrs?[PDFDocumentAttribute.titleAttribute] as? String
@@ -2332,7 +2333,12 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
     // Prepare unique references (filter duplicates first)
     var uniqueRefs: [(index: Int, cleanedRef: String, originalRef: String)] = []
     for (index, refText) in individualRefs.enumerated() {
-        let cleanedRef = refText
+        // 1. Clean up hyphens and newlines (e.g., "sol-\nids" -> "solids")
+        let dehyphenated = refText.replacingOccurrences(of: #"-\s*\n\s*"#, with: "", options: .regularExpression)
+                                  .replacingOccurrences(of: #"\s*\n\s*"#, with: " ", options: .regularExpression)
+        
+        // 2. Remove numbering
+        let cleanedRef = dehyphenated
             .replacingOccurrences(of: #"^\[\d+\]|\d+\."#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
         
@@ -3101,9 +3107,14 @@ private func parseReferenceText(_ text: String) -> (authors: String, title: Stri
         .trimmingCharacters(in: .whitespaces)
     
     // Extract year using regex
-    var year: String? = nil
-    if let yearMatch = cleaned.range(of: #"\((\d{4})\)|\b(19|20)\d{2}\b"#, options: .regularExpression) {
-        year = String(cleaned[yearMatch]).filter { $0.isNumber }
+    var extractedYear: String? = nil
+    
+    // Improved Year Extraction: check year at end of string first (common in numbered styles)
+    if let yearMatch = cleaned.range(of: #"\b(19|20)\d{2}\b[^\w]*$"#, options: .regularExpression) {
+         let y = String(cleaned[yearMatch]).trimmingCharacters(in: CharacterSet.decimalDigits.inverted)
+         extractedYear = y
+    } else if let yearMatch = cleaned.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression) {
+        extractedYear = String(cleaned[yearMatch])
     }
     
     // Use Apple NaturalLanguage framework for entity recognition
@@ -3163,7 +3174,7 @@ private func parseReferenceText(_ text: String) -> (authors: String, title: Stri
     
     guard !authors.isEmpty || !title.isEmpty else { return nil }
     
-    return (authors: authors, title: title, journal: journal, year: year)
+    return (authors: authors, title: title, journal: journal, year: extractedYear)
 }
 
 /// Query CrossRef API using metadata

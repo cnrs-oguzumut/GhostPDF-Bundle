@@ -3532,6 +3532,7 @@ struct AITabView: View {
     @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
     @AppStorage("shortenAuthors") private var shortenAuthors = false
     @AppStorage("abbreviateJournals") private var abbreviateJournals = false
+    @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false
 
     @State private var activeAction: AIAction? = nil
 
@@ -3831,6 +3832,7 @@ struct ResearcherTabView: View {
     @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
     @AppStorage("shortenAuthors") private var shortenAuthors = false  // NEW
     @AppStorage("abbreviateJournals") private var abbreviateJournals = false // NEW
+    @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false // NEW
     @StateObject private var networkMonitor = NetworkMonitor()
 
     @State private var activeAction: ResearcherAction? = nil
