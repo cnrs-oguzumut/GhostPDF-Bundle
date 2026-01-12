@@ -861,13 +861,17 @@ private func extractBibTeXOffline(url: URL, doc: PDFDocument, extractedDOI: Stri
     
     let authorLast = finalAuthor.components(separatedBy: " ").last?.filter { $0.isLetter } ?? "Author"
     let titleFirst = finalTitle.components(separatedBy: " ").filter { $0.count > 3 }.first?.filter { $0.isLetter } ?? "Title"
-    let citeKey = "\(authorLast)\(year)\(titleFirst)".lowercased()
+    
+    // Clean key for BibTeX (ASCII only)
+    let cleanAuthorKey = authorLast.folding(options: .diacriticInsensitive, locale: .current)
+    let cleanTitleKey = titleFirst.folding(options: .diacriticInsensitive, locale: .current)
+    let citeKey = "\(cleanAuthorKey)\(year)\(cleanTitleKey)".lowercased()
     
     var bib = "@article{\(citeKey),\n"
-    bib += "    author = {\(finalAuthor)},\n"
-    bib += "    title = {\(finalTitle)},\n"
+    bib += "    author = {\(latexEscaped(finalAuthor))},\n"
+    bib += "    title = {\(latexEscaped(finalTitle))},\n"
     bib += "    year = {\(year)},\n"
-    bib += "    journal = {\(finalJournal)}"
+    bib += "    journal = {\(latexEscaped(finalJournal))}"
     
     if !volume.isEmpty { bib += ",\n    volume = {\(volume)}" }
     if !number.isEmpty { bib += ",\n    number = {\(number)}" }
@@ -2948,6 +2952,38 @@ private func formatAuthorName(_ name: String) -> String {
 }
 
 /// Build BibTeX string from CrossRef JSON response
+/// Helper to escape special characters for LaTeX/BibTeX compatibility
+private func latexEscaped(_ text: String) -> String {
+    let mapping: [Character: String] = [
+        "à": "\\`a", "á": "\\'a", "â": "\\^a", "ã": "\\~a", "ä": "\\\"a", "å": "\\r{a}", "æ": "\\ae",
+        "ç": "\\c{c}",
+        "è": "\\`e", "é": "\\'e", "ê": "\\^e", "ë": "\\\"e",
+        "ì": "\\`i", "í": "\\'i", "î": "\\^i", "ï": "\\\"i",
+        "ñ": "\\~n",
+        "ò": "\\`o", "ó": "\\'o", "ô": "\\^o", "õ": "\\~o", "ö": "\\\"o", "ø": "\\o",
+        "ù": "\\`u", "ú": "\\'u", "û": "\\^u", "ü": "\\\"u",
+        "ý": "\\'y", "ÿ": "\\\"y",
+        "À": "\\`A", "Á": "\\'A", "Â": "\\^A", "Ã": "\\~A", "Ä": "\\\"A", "Å": "\\r{A}", "Æ": "\\AE",
+        "Ç": "\\c{C}",
+        "È": "\\`E", "É": "\\'E", "Ê": "\\^E", "Ë": "\\\"E",
+        "Ì": "\\`I", "Í": "\\'I", "Î": "\\^I", "Ï": "\\\"I",
+        "Ñ": "\\~N",
+        "Ò": "\\`O", "Ó": "\\'O", "Ô": "\\^O", "Õ": "\\~O", "Ö": "\\\"O", "Ø": "\\O",
+        "Ù": "\\`U", "Ú": "\\'U", "Û": "\\^U", "Ü": "\\\"U",
+        "Ý": "\\'Y"
+    ]
+    
+    var result = ""
+    for char in text {
+        if let escaped = mapping[char] {
+            result += "{\(escaped)}"
+        } else {
+            result.append(char)
+        }
+    }
+    return result
+}
+
 private func buildBibTeXFromJSON(_ json: [String: Any], options: BibTeXFormatOptions = BibTeXFormatOptions()) -> String? {
     guard let message = json["message"] as? [String: Any] else { return nil }
     
@@ -2990,13 +3026,16 @@ private func buildBibTeXFromJSON(_ json: [String: Any], options: BibTeXFormatOpt
     let doi = message["DOI"] as? String ?? ""
     
     // Generate citation key: FirstAuthor + Year (e.g., Smith2020)
+    // Normalize key to ASCII for BibTeX compatibility
     let firstAuthorFamily = (message["author"] as? [[String: Any]])?
         .first?["family"] as? String ?? "Unknown"
-    let key = "\(firstAuthorFamily)\(year)"
+    let cleanKey = firstAuthorFamily.folding(options: .diacriticInsensitive, locale: .current)
+        .components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
+    let key = "\(cleanKey)\(year)"
     
     var bib = "@article{\(key),\n"
-    bib += "    author = {\(authors)},\n"
-    bib += "    title = {\(title)},\n"
+    bib += "    author = {\(latexEscaped(authors))},\n"
+    bib += "    title = {\(latexEscaped(title))},\n"
     bib += "    year = {\(year)}"
     
     if let j = journal, !j.isEmpty {
