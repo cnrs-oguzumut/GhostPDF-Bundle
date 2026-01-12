@@ -2163,15 +2163,49 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
             if !startCollecting {
                 let refHeaders = ["References", "REFERENCES", "Bibliography", "BIBLIOGRAPHY", 
                                  "Works Cited", "WORKS CITED", "Literature Cited", "LITERATURE CITED"]
-                if refHeaders.contains(where: { trimmed.hasPrefix($0) || trimmed == $0 }) {
+                
+                // If it's an exact match on a line, it's very likely a header
+                if refHeaders.contains(trimmed) {
                     startCollecting = true
                     print("DEBUG - Found references section on page \(pageIndex)")
                     continue
                 }
+                
+                // If it's a prefix (e.g. "References:"), validate it's followed by something that looks like a ref
+                if refHeaders.contains(where: { trimmed.hasPrefix($0) }) {
+                    var nextLine: String? = nil
+                    let currentIndex = lines.firstIndex(of: line) ?? -1
+                    if currentIndex != -1 && currentIndex < lines.count - 1 {
+                        for i in (currentIndex + 1)..<lines.count {
+                            let candidate = lines[i].trimmingCharacters(in: .whitespaces)
+                            if !candidate.isEmpty {
+                                nextLine = candidate
+                                break
+                            }
+                        }
+                    }
+                    
+                    if let next = nextLine, let firstChar = next.first, firstChar.isLowercase {
+                        continue 
+                    }
+                    
+                    startCollecting = true
+                    print("DEBUG - Found references section (prefix) on page \(pageIndex)")
+                    continue
+                }
             }
-            
+
             if startCollecting {
-                referenceText += line + "\n"
+                // Skip lines that look like math/equations (contain \partial, ∂, =, etc.)
+                // Skip very short lines (< 10 chars) or lines that are just equations
+                let mathPatterns = ["∂", "∫", "∑", "α", "β", "γ", "ψ", "ϵ", "∈", "∀", "∃"]
+                let hasMath = mathPatterns.contains { trimmed.contains($0) }
+                let isEquation = trimmed.contains("=") && trimmed.count < 40
+
+                // Only collect lines that look like references (not math)
+                if !hasMath && !isEquation && trimmed.count > 15 {
+                    referenceText += line + "\n"
+                }
             }
         }
         
@@ -2195,12 +2229,28 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
     var currentRef = ""
     var individualRefs: [String] = []
     
-    // First, check if references are numbered or name-based
-    let hasNumberedRefs = refLines.contains { line in
-        line.range(of: #"^\[\d+\]|^\d+\.\s|^\(\d+\)"#, options: .regularExpression) != nil
+    // First, check if references are numbered or name-based using a majority vote
+    var numberedVotes = 0
+    var nameBasedVotes = 0
+    
+    for line in refLines {
+        // [1] or 1. or 1 format
+        if line.range(of: #"^\[\d+\]|^\d+\.\s"#, options: .regularExpression) != nil {
+            numberedVotes += 1
+        }
+        
+        // Name-based patterns: Author, A., or Author, A.B.,
+        // Improved to handle accents and lowercase prefixes (de, van, etc.)
+        let authorPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)\p{L}+,\s+\p{Lu}\."#
+        if line.range(of: authorPattern, options: [.regularExpression, .caseInsensitive]) != nil && line.count > 15 {
+            nameBasedVotes += 1
+        }
     }
     
-    print("DEBUG - Reference format: \(hasNumberedRefs ? "numbered" : "name-based")")
+    // Predominantly numbered if numberedVotes is high or at least > nameBasedVotes
+    let hasNumberedRefs = numberedVotes > nameBasedVotes
+    
+    print("DEBUG - Reference format: \(hasNumberedRefs ? "numbered (\(numberedVotes) votes)" : "name-based (\(nameBasedVotes) votes)")")
     
     for line in refLines {
         var startsNewRef = false
@@ -2219,20 +2269,28 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
                 }
             }
         } else {
-            // Name-based references - simpler heuristic
-            // If current ref is long enough and new line looks like it starts with author name:
-            // - Starts with capital letter
-            // - Has comma or period in first 20 characters (author initial)
-            // - Doesn't start with common continuation words
+            // Name-based references - improved heuristic
+            // A new reference typically starts with: Author, Initial. or Author, A.B.
+            // Look for patterns like: "Surname, I." or "Surname, I.J." at start of line
             
-            let startsWithCap = line.first?.isUppercase ?? false
-            let first20 = String(line.prefix(20))
-            let hasEarlyPunctuation = first20.contains(",") || first20.contains(".")
-            let continuationWords = ["The", "A ", "An ", "In ", "On ", "And ", "For ", "With ", "From "]
-            let isContinuation = continuationWords.contains { line.hasPrefix($0) }
-            
-            if startsWithCap && hasEarlyPunctuation && !isContinuation {
-                if currentRef.count > 50 || currentRef.isEmpty {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+
+            // Common continuation patterns (unlikely to start a reference)
+            let continuationWords = ["The", "A ", "An ", "In ", "On ", "And ", "For ", "With ", "From ", "To ", "Of ", "At ", "By "]
+            let isContinuation = continuationWords.contains { trimmedLine.hasPrefix($0) }
+
+            // Check if line looks like author name format: "Lastname, F." or "Lastname, F.G."
+            // Supports accents and common lowercase prefixes
+            let authorPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)\p{L}+,\s+\p{Lu}\."#
+            let looksLikeAuthor = trimmedLine.range(of: authorPattern, options: [.regularExpression, .caseInsensitive]) != nil
+
+            // Additional check: line starts with multiple capital letters (like "Bourdin B, ")
+            let multiCapsPattern = #"^(\p{Lu}|de\s|von\s|van\s|di\s|le\s|la\s)\p{L}+\s+\p{Lu}"#
+            let hasMultipleCaps = trimmedLine.range(of: multiCapsPattern, options: [.regularExpression, .caseInsensitive]) != nil
+
+            // Start new reference if it looks like author name and current ref is substantial
+            if !isContinuation && (looksLikeAuthor || hasMultipleCaps) {
+                if currentRef.count > 60 || currentRef.isEmpty {
                     startsNewRef = true
                 }
             }
@@ -2252,6 +2310,13 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
     }
     
     print("DEBUG - Found \(individualRefs.count) individual references")
+
+    // Debug: Print first 50 chars of each reference for diagnostics
+    if individualRefs.count < 10 {
+        for (i, ref) in individualRefs.enumerated() {
+            print("DEBUG - Ref \(i+1): \(ref.prefix(60))...")
+        }
+    }
     
     // 3. Process references concurrently in batches of 4 for API rate limiting
     var processedKeys: Set<String> = []
