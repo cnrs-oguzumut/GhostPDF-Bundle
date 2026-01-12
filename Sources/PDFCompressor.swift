@@ -2248,8 +2248,15 @@ private func queryBibTeXWithRawText(_ refText: String) async -> String? {
     }
     
     // Check for DOI in the reference text - if found, use it directly
-    if let doiMatch = refText.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
-        let doi = String(refText[doiMatch])
+    // First, try to clean up potential split DOIs (e.g. "10.\n1016")
+    let textForDoi = refText
+        .replacingOccurrences(of: "\n", with: "")
+        .replacingOccurrences(of: "10. ", with: "10.")
+    
+    if let doiMatch = textForDoi.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+        var doi = String(textForDoi[doiMatch])
+        // Clean up any trailing punctuation that might have been matched
+        doi = doi.trimmingCharacters(in: CharacterSet(charactersIn: ".,;"))
         print("DEBUG - Found DOI: \(doi)")
         
         // Try to get BibTeX directly using DOI
