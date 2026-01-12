@@ -2144,7 +2144,7 @@ class PDFCompressor {
 ///   - options: BibTeX formatting options
 ///   - isCancelledCheck: Optional closure to check if the task should be cancelled
 ///   - progressCallback: Called with (current, total) for progress updates
-func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOptions(), isCancelledCheck: (() -> Bool)? = nil, progressCallback: ((Int, Int) -> Void)? = nil) async -> [String] {
+func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOptions(), allowOnline: Bool = true, isCancelledCheck: (() -> Bool)? = nil, progressCallback: ((Int, Int) -> Void)? = nil) async -> [String] {
     guard let doc = PDFDocument(url: url) else { return [] }
     
     var references: [String] = []
@@ -2152,6 +2152,31 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
     var startCollecting = false
     var pagesCollected = 0
     
+    // 0. Try to find DOI of the document itself first
+    var docDOI: String? = nil
+    for pageIndex in 0..<min(3, doc.pageCount) {
+         if let page = doc.page(at: pageIndex), let text = page.string {
+             if let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+                 var doi = String(text[doiMatch])
+                 // Cleanup
+                 if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
+                 docDOI = doi
+                 break
+             }
+         }
+    }
+
+    // New Strategy: If we have a DOI and online lookup is allowed, try to fetch the reference list directly!
+    if let doi = docDOI, allowOnline {
+         print("DEBUG - Found Document DOI: \(doi). Attempting to fetch reference list from CrossRef...")
+         if let onlineRefs = await fetchReferenceListFromDOI(doi, options: options) {
+             print("DEBUG - Successfully fetched \(onlineRefs.count) references from CrossRef directly.")
+             return onlineRefs
+         }
+         print("DEBUG - Failed to fetch references from CrossRef (or list empty). Falling back to text parsing.")
+    }
+
+
     // 1. Find References section and extract ALL text until end
     for pageIndex in 0..<doc.pageCount {
         // Check for cancellation
@@ -3628,4 +3653,90 @@ func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil) -> St
     }
     
     return cleanedEntries.joined(separator: "\n\n")
+}
+
+/// Fetch the reference list for a given DOI from CrossRef and convert to BibTeX
+private func fetchReferenceListFromDOI(_ doi: String, options: BibTeXFormatOptions) async -> [String]? {
+    let urlString = "https://api.crossref.org/works/\(doi)"
+    guard let url = URL(string: urlString) else { return nil }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+    
+    do {
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? [String: Any],
+           let references = message["reference"] as? [[String: Any]],
+           !references.isEmpty {
+            
+            var bibtexList: [String] = []
+            
+            for ref in references {
+                // Determine Entry Type and Key
+                let key = ref["key"] as? String ?? "ref\(UUID().uuidString.prefix(8))"
+                let doi = ref["DOI"] as? String
+                var type = "article"
+                
+                // If it has no DOI but has series-title or volume without journal, might be a book/proc
+                if doi == nil && (ref["series-title"] != nil || ref["journal-title"] == nil) {
+                    type = "misc" 
+                }
+                
+                var bib = "@\(type){\(key),\n"
+                
+                // Author
+                if let author = ref["author"] as? String {
+                     bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(author) : author)},\n"
+                } else if let author = ref["unstructured"] as? String {
+                    // Sometimes unstructured contains the whole citation
+                }
+                
+                // Title (often missing in reference list, usually only Journal Title is present)
+                if let artTitle = ref["article-title"] as? String {
+                    bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(artTitle) : artTitle)},\n"
+                } else if let seriesTitle = ref["series-title"] as? String {
+                     bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(seriesTitle) : seriesTitle)},\n"
+                }
+                
+                // Journal / Container
+                if let journal = ref["journal-title"] as? String {
+                    bib += "    journal = {\(options.useLaTeXEscaping ? latexEscaped(journal) : journal)},\n"
+                } else if let volumeTitle = ref["volume-title"] as? String {
+                    // For books?
+                    bib += "    booktitle = {\(options.useLaTeXEscaping ? latexEscaped(volumeTitle) : volumeTitle)},\n"
+                }
+                
+                // Year
+                if let year = ref["year"] as? String {
+                    bib += "    year = {\(year)},\n"
+                }
+                
+                // Volume/Pages
+                if let vol = ref["volume"] as? String {
+                    bib += "    volume = {\(vol)},\n"
+                }
+                if let page = ref["first-page"] as? String {
+                    bib += "    pages = {\(page)},\n"
+                }
+                
+                // DOI
+                if let d = doi {
+                    bib += "    doi = {\(d)},\n"
+                }
+                
+                bib += "    note = {Extracted via CrossRef reference list using source DOI}\n"
+                bib += "}"
+                
+                bibtexList.append(bib)
+            }
+            
+            return bibtexList
+        }
+    } catch {
+        print("DEBUG - Failed to fetch reference list for DOI \(doi): \(error)")
+    }
+    
+    return nil
 }

@@ -3808,7 +3808,7 @@ struct AITabView: View {
         
         Task {
                     let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
-            let references = await extractReferences(url: file.url, options: opts)
+            let references = await extractReferences(url: file.url, options: opts, allowOnline: allowOnlineLookup)
             
             await MainActor.run {
                 if references.isEmpty {
