@@ -3837,10 +3837,10 @@ struct ResearcherTabView: View {
         outputText = "Extracting BibTeX metadata..."
         
         Task {
-            let bibEntry = await extractBibTeX(url: file.url, useOnline: allowOnlineLookup)
+            let bibEntry = await extractBibTeX(url: file.url, allowOnline: allowOnlineLookup)
             
             await MainActor.run {
-                outputText = bibEntry
+                outputText = bibEntry ?? "Unable to extract BibTeX."
                 isProcessing = false
             }
         }
