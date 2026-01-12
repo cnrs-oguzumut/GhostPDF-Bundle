@@ -172,6 +172,7 @@ struct ContentView: View {
                     Text("Security").tag(3)
                     Text("Advanced").tag(4)
                     Text("AI").tag(5)
+                    Text("Researcher").tag(6)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
@@ -192,6 +193,8 @@ struct ContentView: View {
                     advancedTabContent
                 } else if selectedTab == 5 {
                     aiTabContent
+                } else if selectedTab == 6 {
+                    researcherTabContent
                 } else {
                     proTabContent
                 }
@@ -300,6 +303,15 @@ struct ContentView: View {
             summaryLength: $summaryLength,
             summaryText: $summaryText,
             isSummarizing: $isSummarizing
+        )
+    }
+    
+    @ViewBuilder
+    private var researcherTabContent: some View {
+        ResearcherTabView(
+            selectedFiles: $selectedFiles,
+            outputText: $summaryText,
+            isProcessing: $isSummarizing
         )
     }
     
@@ -3374,8 +3386,6 @@ struct AITabView: View {
 
     enum AIAction {
         case summary
-        case bibtex
-        case references
     }
 
     var body: some View {
@@ -3446,105 +3456,31 @@ struct AITabView: View {
                         }
                         .padding(12)
                     }
-
-                    // BibTeX Card
+                    
+                    // Coming Soon Card
                     GroupBox {
                         VStack(spacing: 12) {
                             HStack {
-                                Image(systemName: "quote.bubble")
+                                Image(systemName: "sparkles")
                                     .font(.system(size: 20))
-                                    .foregroundColor(.blue)
-                                Text("BibTeX Extraction")
+                                    .foregroundColor(.gray)
+                                Text("More AI Features Coming Soon")
                                     .font(.headline)
+                                    .foregroundColor(.secondary)
                                 Spacer()
                             }
-
-                            Text("Extract bibliographic metadata from PDFs for academic citations.")
+                            
+                            Text("Future AI capabilities: Key points extraction, Question answering, Document comparison, and more.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Divider()
-
-                            Toggle(isOn: $allowOnlineLookup) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: allowOnlineLookup ? "wifi" : "wifi.slash")
-                                        .foregroundColor(allowOnlineLookup ? .green : .secondary)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(allowOnlineLookup ? "Online Mode" : "Offline Mode")
-                                            .font(.subheadline)
-                                        Text(allowOnlineLookup ? "CrossRef API for complete metadata" : "Local extraction only")
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                            .toggleStyle(.switch)
-
-                            Button(action: {
-                                activeAction = .bibtex
-                                generateBibEntry()
-                            }) {
-                                HStack {
-                                    if isSummarizing && activeAction == .bibtex {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Image(systemName: "doc.text")
-                                    }
-                                    Text(isSummarizing && activeAction == .bibtex ? "Extracting..." : "Extract BibTeX")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(activeAction == .bibtex ? .blue : .accentColor)
-                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
                         }
                         .padding(12)
                     }
-
-                    // References Extraction Card
-                    GroupBox {
-                        VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "list.bullet.rectangle")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.orange)
-                                Text("References Extraction")
-                                    .font(.headline)
-                                Spacer()
-                            }
-
-                            Text("Extract all references from bibliography section using DOI lookup.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Divider()
-
-                            Button(action: {
-                                activeAction = .references
-                                extractReferencesAction()
-                            }) {
-                                HStack {
-                                    if isSummarizing && activeAction == .references {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Image(systemName: "books.vertical")
-                                    }
-                                    Text(isSummarizing && activeAction == .references ? "Extracting..." : "Extract References")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(activeAction == .references ? .orange : .accentColor)
-                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
-                        }
-                        .padding(12)
-                    }
+                    .opacity(0.6)
                 }
                 .padding(.horizontal)
+
 
                 // Output Area
                 GroupBox("Output") {
@@ -3690,6 +3626,255 @@ struct AITabView: View {
                 }
                 isSummarizing = false
             }
+        }
+    }
+}
+
+// MARK: - Researcher Tab View
+struct ResearcherTabView: View {
+    @Binding var selectedFiles: [ContentView.PDFFile]
+    @Binding var outputText: String
+    @Binding var isProcessing: Bool
+    @AppStorage("isDarkMode_v2") private var isDarkMode = true
+    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = false
+    
+    @State private var activeAction: ResearcherAction? = nil
+    
+    enum ResearcherAction {
+        case bibtex
+        case references
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Header
+                HStack {
+                    Image(systemName: "books.vertical.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.orange)
+                    Text("Researcher Tools")
+                        .font(.title2.bold())
+                    Spacer()
+                }
+                .padding(.horizontal)
+                
+                // Action Cards
+                VStack(spacing: 16) {
+                    // BibTeX Card
+                    GroupBox {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "quote.bubble")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.blue)
+                                Text("BibTeX Extraction")
+                                    .font(.headline)
+                                Spacer()
+                            }
+                            
+                            Text("Extract bibliographic metadata from PDFs for academic citations.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Divider()
+                            
+                            Toggle(isOn: $allowOnlineLookup) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: allowOnlineLookup ? "wifi" : "wifi.slash")
+                                        .foregroundColor(allowOnlineLookup ? .green : .secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(allowOnlineLookup ? "Online Mode" : "Offline Mode")
+                                            .font(.subheadline)
+                                        Text(allowOnlineLookup ? "CrossRef API for complete metadata" : "Local extraction only")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .toggleStyle(.switch)
+                            
+                            Button(action: {
+                                activeAction = .bibtex
+                                generateBibEntry()
+                            }) {
+                                HStack {
+                                    if isProcessing && activeAction == .bibtex {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "doc.text")
+                                    }
+                                    Text(isProcessing && activeAction == .bibtex ? "Extracting..." : "Extract BibTeX")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(activeAction == .bibtex ? .blue : .accentColor)
+                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing)
+                        }
+                        .padding(12)
+                    }
+                    
+                    // References Extraction Card
+                    GroupBox {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.orange)
+                                Text("References Extraction")
+                                    .font(.headline)
+                                Spacer()
+                            }
+                            
+                            Text("Extract all references from bibliography section using DOI lookup, CrossRef & Semantic Scholar.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Divider()
+                            
+                            Button(action: {
+                                activeAction = .references
+                                extractReferencesAction()
+                            }) {
+                                HStack {
+                                    if isProcessing && activeAction == .references {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "books.vertical")
+                                    }
+                                    Text(isProcessing && activeAction == .references ? "Extracting..." : "Extract References")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(activeAction == .references ? .orange : .accentColor)
+                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing)
+                        }
+                        .padding(12)
+                    }
+                }
+                .padding(.horizontal)
+                
+                // Output Area
+                GroupBox("Output") {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        HStack {
+                            if !outputText.isEmpty {
+                                Button(action: { outputText = ""; activeAction = nil }) {
+                                    Label("Clear", systemImage: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundColor(.red)
+                                .font(.caption)
+                                
+                                if outputText.contains("@article") || outputText.contains("@book") {
+                                    Button(action: exportBibFile) {
+                                        Label("Save .bib", systemImage: "square.and.arrow.down")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .font(.caption)
+                                }
+                            }
+                            Spacer()
+                        }
+                        
+                        ZStack(alignment: .topTrailing) {
+                            if outputText.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "books.vertical")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(.orange.opacity(0.3))
+                                    Text("Choose an action above to extract references")
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 280)
+                            } else {
+                                ScrollView {
+                                    Text(outputText)
+                                        .textSelection(.enabled)
+                                        .font(.system(.body, design: .monospaced))
+                                        .lineSpacing(4)
+                                        .padding()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(minHeight: 280)
+                                
+                                Button(action: {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(outputText, forType: .string)
+                                }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 14))
+                                }
+                                .buttonStyle(.borderless)
+                                .padding(8)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(NSColor.textBackgroundColor).opacity(0.5))
+                        )
+                    }
+                    .padding(8)
+                }
+                .padding(.horizontal)
+            }
+            .padding(.vertical, 20)
+        }
+    }
+    
+    private func generateBibEntry() {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard let file = checkedFiles.first else { return }
+        
+        isProcessing = true
+        outputText = "Extracting BibTeX metadata..."
+        
+        Task {
+            let bibEntry = await extractBibTeX(url: file.url, useOnline: allowOnlineLookup)
+            
+            await MainActor.run {
+                outputText = bibEntry
+                isProcessing = false
+            }
+        }
+    }
+    
+    private func extractReferencesAction() {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard let file = checkedFiles.first else { return }
+        
+        isProcessing = true
+        outputText = "Scanning for references and extracting DOIs..."
+        
+        Task {
+            let references = await extractReferences(url: file.url)
+            
+            await MainActor.run {
+                if references.isEmpty {
+                    outputText = "No references found or unable to extract DOIs."
+                } else {
+                    let header = "// Extracted \(references.count) reference(s)\n// Verified entries fetched from CrossRef/Semantic Scholar\n\n"
+                    outputText = header + references.joined(separator: "\n\n")
+                }
+                isProcessing = false
+            }
+        }
+    }
+    
+    private func exportBibFile() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "references.bib"
+        panel.allowedContentTypes = [UTType(filenameExtension: "bib") ?? .plainText]
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            try? outputText.write(to: url, atomically: true, encoding: .utf8)
         }
     }
 }
