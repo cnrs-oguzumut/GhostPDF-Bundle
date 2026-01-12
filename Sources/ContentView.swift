@@ -4381,44 +4381,106 @@ struct ResearcherTabView: View {
     }
     
     private func extractReferencesAction() {
-        // ... (rest of the function) checkedFiles check needs to be updated too for single file constraint if needed, but keeping it for now
         let checkedFiles = selectedFiles.filter { $0.isChecked }
-        guard let file = checkedFiles.first else { return } // This one still takes first file for now as per previous logic
-        
+        guard !checkedFiles.isEmpty else { return }
+
         isProcessing = true
         isCancelled = false
-        outputText = "Scanning for references and extracting DOIs..."
+        outputText = "Processing \(checkedFiles.count) PDF(s) for reference extraction..."
 
         extractionTask = Task {
             let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
-            let references = await extractReferences(url: file.url, options: opts, isCancelledCheck: { [self] in
-                return isCancelled
-            }) { current, total in
-                // Update progress on main thread
-                Task { @MainActor in
-                    outputText = "Processing reference \(current) of \(total)...\n\nThis uses concurrent requests for faster extraction."
+            var allReferences: [String] = []
+            var currentFile = 0
+
+            // Process each PDF sequentially to maintain progress tracking
+            for file in checkedFiles {
+                currentFile += 1
+
+                await MainActor.run {
+                    outputText = "Processing PDF \(currentFile) of \(checkedFiles.count): \(file.url.lastPathComponent)..."
                 }
+
+                if isCancelled { break }
+
+                let references = await extractReferences(url: file.url, options: opts, isCancelledCheck: { [self] in
+                    return isCancelled
+                }) { current, total in
+                    // Update progress on main thread
+                    Task { @MainActor in
+                        outputText = "PDF \(currentFile)/\(checkedFiles.count) - Reference \(current)/\(total): \(file.url.lastPathComponent)"
+                    }
+                }
+
+                allReferences.append(contentsOf: references)
             }
 
             await MainActor.run {
                 if isCancelled {
-                    if references.count > 1 {
-                        // Show partial results if any were found before cancellation
-                        let header = "// Extraction stopped - \(references.count - 1) reference(s) found before cancellation\n\n"
-                        outputText = header + references.filter { !$0.contains("cancelled") }.joined(separator: "\n\n")
+                    if allReferences.count > 1 {
+                        let deduplicated = deduplicateReferences(allReferences)
+                        let duplicateCount = allReferences.count - deduplicated.count
+                        let header = "// Extraction stopped - \(deduplicated.count) unique reference(s) found (\(duplicateCount) duplicates removed)\n\n"
+                        outputText = header + deduplicated.joined(separator: "\n\n")
                     } else {
                         outputText = "// Extraction cancelled by user"
                     }
-                } else if references.isEmpty {
-                    outputText = "No references found or unable to extract DOIs."
+                } else if allReferences.isEmpty {
+                    outputText = "No references found in \(checkedFiles.count) PDF(s)."
                 } else {
-                    let header = "// Extracted \(references.count) reference(s)\n// Verified entries fetched from CrossRef/Semantic Scholar\n\n"
-                    outputText = header + references.joined(separator: "\n\n")
+                    // Deduplicate merged references
+                    let deduplicated = deduplicateReferences(allReferences)
+                    let duplicateCount = allReferences.count - deduplicated.count
+
+                    var header = "// Extracted \(deduplicated.count) unique reference(s) from \(checkedFiles.count) PDF(s)"
+                    if duplicateCount > 0 {
+                        header += " (\(duplicateCount) duplicates removed)"
+                    }
+                    header += "\n// Verified entries fetched from CrossRef/Semantic Scholar\n\n"
+
+                    outputText = header + deduplicated.joined(separator: "\n\n")
                 }
                 isProcessing = false
                 extractionTask = nil
             }
         }
+    }
+
+    private func deduplicateReferences(_ references: [String]) -> [String] {
+        var seen = Set<String>()
+        var unique: [String] = []
+
+        for ref in references {
+            // Skip cancelled markers
+            if ref.contains("cancelled") { continue }
+
+            // Extract DOI for deduplication key
+            var dedupeKey = ""
+            if let doiMatch = ref.range(of: #"doi = \{([^}]+)\}"#, options: .regularExpression) {
+                dedupeKey = String(ref[doiMatch])
+            } else {
+                // Fallback: use title + year as key
+                var titleKey = ""
+                var yearKey = ""
+
+                if let titleMatch = ref.range(of: #"title = \{([^}]+)\}"#, options: .regularExpression) {
+                    titleKey = String(ref[titleMatch]).lowercased()
+                }
+                if let yearMatch = ref.range(of: #"year = \{(\d{4})\}"#, options: .regularExpression) {
+                    yearKey = String(ref[yearMatch])
+                }
+
+                dedupeKey = titleKey + yearKey
+            }
+
+            // Only add if not seen before
+            if !seen.contains(dedupeKey) && !dedupeKey.isEmpty {
+                seen.insert(dedupeKey)
+                unique.append(ref)
+            }
+        }
+
+        return unique
     }
 
     private func lookupDOIAction() {
