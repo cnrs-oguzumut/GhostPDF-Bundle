@@ -779,7 +779,7 @@ private func extractBibTeXOffline(url: URL, doc: PDFDocument, extractedDOI: Stri
     }
 
     // Clean up journal name (remove common webpage artifacts)
-    var finalJournal = journal
+    let finalJournal = journal
         .replacingOccurrences(of: #"\s*journal homepage.*$"#, with: "", options: [.regularExpression, .caseInsensitive])
         .replacingOccurrences(of: #"\s*Received date.*$"#, with: "", options: [.regularExpression, .caseInsensitive])
         .replacingOccurrences(of: #"\s*www\..*$"#, with: "", options: [.regularExpression, .caseInsensitive])
@@ -1252,6 +1252,77 @@ class PDFCompressor {
             compressedSize: compressedSize,
             engine: .ghostscript
         )
+    }
+    
+    /// Write new metadata to a PDF file using Ghostscript's pdfmark
+    static func writeMetadata(
+        url: URL,
+        title: String,
+        author: String,
+        subject: String,
+        keywords: String,
+        creator: String
+    ) async -> Bool {
+        guard let gsPath = findGhostscript() else { return false }
+        
+        let fileManager = FileManager.default
+        let tempParamsPath = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ps")
+        let tempOutputPath = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
+        
+        // Sanitize string for PostScript (escape parentheses)
+        func escape(_ s: String) -> String {
+            return s.replacingOccurrences(of: "(", with: "\\(").replacingOccurrences(of: ")", with: "\\)")
+        }
+        
+        // Create pdfmark content
+        let pdfmark = """
+        [ /Title (\(escape(title)))
+          /Author (\(escape(author)))
+          /Subject (\(escape(subject)))
+          /Keywords (\(escape(keywords)))
+          /Creator (\(escape(creator)))
+          /DOCINFO pdfmark
+        """
+        
+        do {
+            try pdfmark.write(to: tempParamsPath, atomically: true, encoding: .utf8)
+            
+            let args = [
+                gsPath,
+                "-dSAFER",
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-sDEVICE=pdfwrite",
+                "-sOutputFile=\(tempOutputPath.path)",
+                tempParamsPath.path,
+                "-f",
+                url.path
+            ]
+            
+            // Execute
+            try await executeGhostscript(args: args)
+            
+            // If successful, replace original file
+            if fileManager.fileExists(atPath: tempOutputPath.path) {
+                // Check if file is valid/non-empty
+                let attr = try fileManager.attributesOfItem(atPath: tempOutputPath.path)
+                if let size = attr[.size] as? Int64, size > 100 {
+                    _ = try? fileManager.removeItem(at: url)
+                    try fileManager.moveItem(at: tempOutputPath, to: url)
+                    
+                    // Cleanup params
+                    try? fileManager.removeItem(at: tempParamsPath)
+                    return true
+                }
+            }
+        } catch {
+            print("Metadata write error: \(error)")
+        }
+        
+        // Cleanup on failure
+        try? fileManager.removeItem(at: tempParamsPath)
+        try? fileManager.removeItem(at: tempOutputPath)
+        return false
     }
     
     private static func compressWithGhostscript(
@@ -2462,7 +2533,7 @@ private func queryBibTeXWithRawText(_ refText: String, originalContext: String? 
                 if isValid, let context = originalContext, let title = item["title"] as? [String], let resultTitle = title.first {
                     // Normalize: lowercase, remove non-alphanumeric
                     let cleanContext = context.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
-                    let cleanTitle = resultTitle.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
+                    let _ = resultTitle.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
                     
                     // HEURISTIC: Check if significant chunks of the result title exist in the context blob.
                     // Just checking "cleanTitle" in "cleanContext" fails if context is partial or OCR is bad.
@@ -2487,7 +2558,7 @@ private func queryBibTeXWithRawText(_ refText: String, originalContext: String? 
             print("DEBUG - No valid CrossRef match found for: \(refText.prefix(40))...")
             
             // Retry with minimal query if full query failed
-            if let ry = refYear, let ra = refAuthor, refText.count > 50 {
+            if let _ = refYear, let _ = refAuthor, refText.count > 50 {
                 // Use capitalized author for minimal query to ensure it's treated as a name in the recursive call
                 if let minimalQuery = "\(refAuthor ?? "") \(refYear ?? "")".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
                     print("DEBUG - Retrying with minimal query: \(minimalQuery)")
@@ -2894,7 +2965,7 @@ private func buildBibTeXFromJSON(_ json: [String: Any], options: BibTeXFormatOpt
 /// Parse reference text to extract metadata
 private func parseReferenceText(_ text: String) -> (authors: String, title: String, journal: String?, year: String?)? {
     // Remove numbering
-    var cleaned = text.replacingOccurrences(of: #"^\[\d+\]|\d+\."#, with: "", options: .regularExpression)
+    let cleaned = text.replacingOccurrences(of: #"^\[\d+\]|\d+\."#, with: "", options: .regularExpression)
         .trimmingCharacters(in: .whitespaces)
     
     // Extract year using regex

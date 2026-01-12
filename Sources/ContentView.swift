@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import Network
+import PDFKit
 
 // MARK: - Network Monitor
 class NetworkMonitor: ObservableObject {
@@ -3841,13 +3842,21 @@ struct ResearcherTabView: View {
         case bibtex
         case references
         case lookup
-        case rename // NEW
+        case rename
+        case metadata // NEW
     }
     
     @State private var doiInput: String = ""
-    @State private var showRenamePreview: Bool = false // NEW
-    @State private var renameCandidates: [RenameCandidate] = [] // NEW
+    @State private var showRenamePreview: Bool = false
+    @State private var renameCandidates: [RenameCandidate] = []
     
+    // Metadata Editor State
+    @State private var metaTitle: String = ""
+    @State private var metaAuthor: String = ""
+    @State private var metaSubject: String = ""
+    @State private var metaKeywords: String = ""
+    @State private var metaCreator: String = ""
+        
     struct RenameCandidate: Identifiable {
         let id = UUID()
         let originalURL: URL
@@ -4051,6 +4060,56 @@ struct ResearcherTabView: View {
                 }
                 .padding(.horizontal)
                 
+                // Metadata Editor Card
+                GroupBox(label: Label("Metadata Editor", systemImage: "tag.fill")) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if selectedFiles.filter({ $0.isChecked }).count == 1 {
+                            VStack(spacing: 12) {
+                                TextField("Title", text: $metaTitle)
+                                TextField("Author", text: $metaAuthor)
+                                TextField("Subject", text: $metaSubject)
+                                TextField("Keywords", text: $metaKeywords)
+                                TextField("Creator", text: $metaCreator)
+                            }
+                            .textFieldStyle(.roundedBorder)
+                            
+                            HStack {
+                                Button("Read Metadata") {
+                                    if let file = selectedFiles.first(where: { $0.isChecked }) {
+                                        readMetadata(from: file.url)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    Task {
+                                        await writeMetadataAction()
+                                    }
+                                }) {
+                                    if isProcessing && activeAction == .metadata {
+                                        ProgressView().scaleEffect(0.5)
+                                    } else {
+                                        Text("Apply Changes")
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(isProcessing)
+                            }
+                        } else {
+                            HStack {
+                                Image(systemName: "info.circle")
+                                Text("Select exactly one PDF to view and edit metadata.")
+                            }
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                    }
+                    .padding(12)
+                }
+                .padding(.horizontal)
+                
                 // Output Area
                 GroupBox("Output") {
                     VStack(alignment: .trailing, spacing: 8) {
@@ -4082,8 +4141,10 @@ struct ResearcherTabView: View {
 
                                     Button(action: exportBibFile) {
                                         Label("Save .bib", systemImage: "square.and.arrow.down")
+                                            .fontWeight(.medium)
                                     }
-                                    .buttonStyle(.borderless)
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.blue)
                                     .font(.caption)
                                 }
                             }
@@ -4181,6 +4242,23 @@ struct ResearcherTabView: View {
                                             .font(.system(size: 14))
                                     }
                                     .buttonStyle(.borderless)
+                                }
+                                
+                                // Quick Copy Buttons
+                                if showCitationPreview {
+                                    HStack(spacing: 8) {
+                                        ForEach([CitationStyle.apa, .mla, .chicago], id: \.self) { style in
+                                            Button("Copy \(style.rawValue)") {
+                                                let text = CitationFormatter.formatMultiple(outputText, style: style)
+                                                NSPasteboard.general.clearContents()
+                                                NSPasteboard.general.setString(text, forType: .string)
+                                            }
+                                            .font(.caption)
+                                            .buttonStyle(.bordered)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 4)
                                 }
 
                                 if showCitationPreview {
@@ -4526,6 +4604,59 @@ struct ResearcherTabView: View {
         outputText = "Renamed \(renameCandidates.filter{$0.isSelected}.count) file(s)."
     }
     
+    private func readMetadata(from url: URL) {
+        guard let doc = PDFDocument(url: url) else { return }
+        let attrs = doc.documentAttributes
+        
+        metaTitle = attrs?[PDFDocumentAttribute.titleAttribute] as? String ?? ""
+        metaAuthor = attrs?[PDFDocumentAttribute.authorAttribute] as? String ?? ""
+        metaSubject = attrs?[PDFDocumentAttribute.subjectAttribute] as? String ?? ""
+        metaKeywords = attrs?[PDFDocumentAttribute.keywordsAttribute] as? String ?? ""
+        
+        if let creator = attrs?[PDFDocumentAttribute.creatorAttribute] as? String {
+            metaCreator = creator
+        } else if let creatorStr = attrs?["Creator"] as? String {
+            metaCreator = creatorStr
+        } else {
+            metaCreator = ""
+        }
+        
+        // Auto-select text
+        activeAction = .metadata
+    }
+    
+    private func writeMetadataAction() async {
+        guard let file = selectedFiles.first(where: { $0.isChecked }) else { return }
+        
+        isProcessing = true
+        activeAction = .metadata
+        
+        // Call PDFCompressor.writeMetadata
+        // Assumes PDFCompressor.writeMetadata is available (it is now)
+        let success = await PDFCompressor.writeMetadata(
+            url: file.url,
+            title: metaTitle,
+            author: metaAuthor,
+            subject: metaSubject,
+            keywords: metaKeywords,
+            creator: metaCreator
+        )
+        
+        await MainActor.run {
+            isProcessing = false
+            if success {
+                // Update file size in list
+                if let idx = selectedFiles.firstIndex(where: { $0.id == file.id }) {
+                    let newSize = (try? FileManager.default.attributesOfItem(atPath: file.url.path)[.size] as? Int64) ?? file.originalSize
+                    selectedFiles[idx] = ContentView.PDFFile(url: file.url, originalSize: newSize, isChecked: true)
+                }
+                outputText = "Metadata successfully updated for \(file.url.lastPathComponent)"
+            } else {
+                outputText = "Failed to update metadata. Ensure Ghostscript is available."
+            }
+        }
+    }
+
     private func getPreviewText() -> String {
         // If not containing BibTeX-like entries, show full text (e.g. error messages)
         guard outputText.contains("@article") || outputText.contains("@book") || outputText.contains("@inproceedings") else {
