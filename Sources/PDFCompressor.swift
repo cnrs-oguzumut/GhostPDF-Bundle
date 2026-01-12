@@ -2154,16 +2154,35 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
     
     // 0. Try to find DOI of the document itself first
     var docDOI: String? = nil
-    for pageIndex in 0..<min(3, doc.pageCount) {
-         if let page = doc.page(at: pageIndex), let text = page.string {
-             if let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+    
+    // Check Metadata Attributes first (Subject, Keywords)
+    if let attrs = doc.documentAttributes {
+        let candidates = [attrs[PDFDocumentAttribute.subjectAttribute] as? String, 
+                          attrs[PDFDocumentAttribute.keywordsAttribute] as? String]
+        
+        for candidate in candidates {
+            if let text = candidate, let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
                  var doi = String(text[doiMatch])
-                 // Cleanup
                  if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
                  docDOI = doi
                  break
+            }
+        }
+    }
+    
+    // If not found in metadata, scan first 3 pages
+    if docDOI == nil {
+        for pageIndex in 0..<min(3, doc.pageCount) {
+             if let page = doc.page(at: pageIndex), let text = page.string {
+                 if let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+                     var doi = String(text[doiMatch])
+                     // Cleanup
+                     if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
+                     docDOI = doi
+                     break
+                 }
              }
-         }
+        }
     }
 
     // New Strategy: If we have a DOI and online lookup is allowed, try to fetch the reference list directly!
