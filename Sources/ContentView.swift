@@ -8,6 +8,24 @@ enum ExtractMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum SummaryLength: Int, CaseIterable, Identifiable {
+    case short = 3
+    case medium = 7
+    case long = 15
+    case detailed = 30
+    
+    var id: Int { rawValue }
+    
+    var name: String {
+        switch self {
+        case .short: return "Short (3)"
+        case .medium: return "Medium (7)"
+        case .long: return "Long (15)"
+        case .detailed: return "Detailed (30)"
+        }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedFiles: [PDFFile] = []
@@ -78,7 +96,8 @@ struct ContentView: View {
     @State private var reorderPageOrder: [Int] = []
     
     // AI Summary State
-    @State private var showingSummarySheet: Bool = false
+    // AI Summary State
+    @State private var summaryLength: SummaryLength = .medium
     @State private var summaryText: String = ""
     @State private var isSummarizing: Bool = false
     
@@ -152,11 +171,12 @@ struct ContentView: View {
                     Text("Tools").tag(2)
                     Text("Security").tag(3)
                     Text("Advanced").tag(4)
+                    Text("AI").tag(5)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
                 .onChange(of: selectedTab) { newValue in
-                    if (newValue == 1 || newValue == 2 || newValue == 3 || newValue == 4) && !appState.ghostscriptAvailable {
+                    if (newValue == 1 || newValue == 2 || newValue == 3 || newValue == 4 || newValue == 5) && !appState.ghostscriptAvailable {
                         selectedTab = 0
                         showingProModeRequirementAlert = true
                     }
@@ -170,6 +190,8 @@ struct ContentView: View {
                     securityTabContent
                 } else if selectedTab == 4 {
                     advancedTabContent
+                } else if selectedTab == 5 {
+                    aiTabContent
                 } else {
                     proTabContent
                 }
@@ -192,27 +214,30 @@ struct ContentView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 }
-                
-                Button(action: performAction) {
-                    Text(actionButtonTitle)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(
-                            LinearGradient(
-                                colors: !selectedFiles.isEmpty && !isCompressing 
-                                    ? [Color(red: 34/255, green: 197/255, blue: 94/255), Color(red: 22/255, green: 163/255, blue: 74/255)]
-                                    : [Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3), Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+
+                // Hide the compress button on AI tab
+                if selectedTab != 5 {
+                    Button(action: performAction) {
+                        Text(actionButtonTitle)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                LinearGradient(
+                                    colors: !selectedFiles.isEmpty && !isCompressing
+                                        ? [Color(red: 34/255, green: 197/255, blue: 94/255), Color(red: 22/255, green: 163/255, blue: 74/255)]
+                                        : [Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3), Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .cornerRadius(14)
+                            .cornerRadius(14)
+                    }
+                    .disabled(selectedFiles.isEmpty || isCompressing)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
                 }
-                .disabled(selectedFiles.isEmpty || isCompressing)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
             }
         }
         .sheet(isPresented: $showingComparison) {
@@ -221,44 +246,7 @@ struct ContentView: View {
                     .frame(minWidth: 800, minHeight: 600)
             }
         }
-        .sheet(isPresented: $showingSummarySheet) {
-            VStack(spacing: 16) {
-                HStack {
-                    Text("AI Summary")
-                        .font(.title2.bold())
-                    Spacer()
-                    Button("Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(summaryText, forType: .string)
-                    }
-                    .buttonStyle(.bordered)
-                    Button("Close") {
-                        showingSummarySheet = false
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                
-                if isSummarizing {
-                    ProgressView("Analyzing PDF...")
-                        .padding()
-                } else if summaryText.isEmpty {
-                    Text("No text could be extracted from this PDF.")
-                        .foregroundColor(.secondary)
-                        .padding()
-                } else {
-                    ScrollView {
-                        Text(summaryText)
-                            .textSelection(.enabled)
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(8)
-                }
-            }
-            .padding()
-            .frame(minWidth: 500, minHeight: 400)
-        }
+
         .alert(selectedTab == 4 ? "Operation Complete" : "Batch Complete", isPresented: $showingResult) {
             Button("Reveal in Finder") {
                 if let first = lastResults.first {
@@ -303,6 +291,16 @@ struct ContentView: View {
                 Spacer()
         }
         .padding(24)
+    }
+    
+    @ViewBuilder
+    private var aiTabContent: some View {
+        AITabView(
+            selectedFiles: $selectedFiles,
+            summaryLength: $summaryLength,
+            summaryText: $summaryText,
+            isSummarizing: $isSummarizing
+        )
     }
     
     @ViewBuilder
@@ -386,7 +384,6 @@ struct ContentView: View {
                 case .pageNumber: return "Add Page Numbers"
                 case .reorder: return "Reorder Pages"
                 case .resizeA4: return "Resize All to A4"
-                case .summarize: return "Summarize Files"
                 }
             }
             switch selectedTool {
@@ -398,7 +395,6 @@ struct ContentView: View {
             case .pageNumber: return "Add Page Numbers"
             case .reorder: return "Reorder Pages"
             case .resizeA4: return "Resize to A4"
-            case .summarize: return "Summarize PDF"
             }
         }
         if selectedTab == 4 {
@@ -436,36 +432,11 @@ struct ContentView: View {
                 reorderPages()
             case .resizeA4:
                 resizeToA4()
-            case .summarize:
-                performSummarize()
             }
         } else if selectedTab == 4 {
             performAdvancedAction()
         } else {
             compress()
-        }
-    }
-    
-    private func performSummarize() {
-        let checkedFiles = selectedFiles.filter { $0.isChecked }
-        guard let file = checkedFiles.first else { return }
-        
-        isSummarizing = true
-        summaryText = ""
-        showingSummarySheet = true
-        
-        Task {
-            if let summary = summarizePDF(url: file.url, maxSentences: 7, password: nil) {
-                await MainActor.run {
-                    summaryText = summary
-                    isSummarizing = false
-                }
-            } else {
-                await MainActor.run {
-                    summaryText = ""
-                    isSummarizing = false
-                }
-            }
         }
     }
     
@@ -2349,8 +2320,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
     case pageNumber
     case reorder
     case resizeA4
-    case summarize
-
+    
     var id: String { rawValue }
 
     var name: String {
@@ -2363,7 +2333,6 @@ enum ToolMode: String, CaseIterable, Identifiable {
         case .pageNumber: return "Page Numbers"
         case .reorder: return "Reorder"
         case .resizeA4: return "Resize to A4"
-        case .summarize: return "AI Summary"
         }
     }
 
@@ -2377,7 +2346,6 @@ enum ToolMode: String, CaseIterable, Identifiable {
         case .pageNumber: return "number.circle"
         case .reorder: return "arrow.up.arrow.down"
         case .resizeA4: return "doc.viewfinder"
-        case .summarize: return "text.quote"
         }
     }
     var description: String {
@@ -2390,7 +2358,6 @@ enum ToolMode: String, CaseIterable, Identifiable {
         case .rotateDelete: return "Rotate pages or delete specific pages."
         case .reorder: return "Reorder pages via drag-and-drop."
         case .resizeA4: return "Scale all pages to standard A4 size (210x297mm)."
-        case .summarize: return "AI-powered text summarization (offline)."
         }
     }
 }
@@ -3392,5 +3359,337 @@ extension ContentView {
                  }
              }
          }
+    }
+}
+
+struct AITabView: View {
+    @Binding var selectedFiles: [ContentView.PDFFile]
+    @Binding var summaryLength: SummaryLength
+    @Binding var summaryText: String
+    @Binding var isSummarizing: Bool
+    @AppStorage("isDarkMode_v2") private var isDarkMode = true
+    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = false
+
+    @State private var activeAction: AIAction? = nil
+
+    enum AIAction {
+        case summary
+        case bibtex
+        case references
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Header
+                HStack {
+                    Image(systemName: "sparkles.rectangle.stack.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.purple)
+                    Text("AI Features")
+                        .font(.title2.bold())
+                    Spacer()
+                }
+                .padding(.horizontal)
+
+                // Action Cards
+                VStack(spacing: 16) {
+                    // Summary Card
+                    GroupBox {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "doc.text.magnifyingglass")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.purple)
+                                Text("PDF Summarization")
+                                    .font(.headline)
+                                Spacer()
+                            }
+
+                            Text("Extract key insights from academic papers using position and keyword-based analysis.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Divider()
+
+                            HStack {
+                                Text("Length:")
+                                    .foregroundColor(.secondary)
+                                Picker("", selection: $summaryLength) {
+                                    ForEach(SummaryLength.allCases) { length in
+                                        Text(length.name).tag(length)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+                            }
+
+                            Button(action: {
+                                activeAction = .summary
+                                generateSummary()
+                            }) {
+                                HStack {
+                                    if isSummarizing && activeAction == .summary {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "wand.and.stars")
+                                    }
+                                    Text(isSummarizing && activeAction == .summary ? "Analyzing..." : "Generate Summary")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(activeAction == .summary ? .purple : .accentColor)
+                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
+                        }
+                        .padding(12)
+                    }
+
+                    // BibTeX Card
+                    GroupBox {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "quote.bubble")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.blue)
+                                Text("BibTeX Extraction")
+                                    .font(.headline)
+                                Spacer()
+                            }
+
+                            Text("Extract bibliographic metadata from PDFs for academic citations.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Divider()
+
+                            Toggle(isOn: $allowOnlineLookup) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: allowOnlineLookup ? "wifi" : "wifi.slash")
+                                        .foregroundColor(allowOnlineLookup ? .green : .secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(allowOnlineLookup ? "Online Mode" : "Offline Mode")
+                                            .font(.subheadline)
+                                        Text(allowOnlineLookup ? "CrossRef API for complete metadata" : "Local extraction only")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .toggleStyle(.switch)
+
+                            Button(action: {
+                                activeAction = .bibtex
+                                generateBibEntry()
+                            }) {
+                                HStack {
+                                    if isSummarizing && activeAction == .bibtex {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "doc.text")
+                                    }
+                                    Text(isSummarizing && activeAction == .bibtex ? "Extracting..." : "Extract BibTeX")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(activeAction == .bibtex ? .blue : .accentColor)
+                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
+                        }
+                        .padding(12)
+                    }
+
+                    // References Extraction Card
+                    GroupBox {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.orange)
+                                Text("References Extraction")
+                                    .font(.headline)
+                                Spacer()
+                            }
+
+                            Text("Extract all references from bibliography section using DOI lookup.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Divider()
+
+                            Button(action: {
+                                activeAction = .references
+                                extractReferencesAction()
+                            }) {
+                                HStack {
+                                    if isSummarizing && activeAction == .references {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "books.vertical")
+                                    }
+                                    Text(isSummarizing && activeAction == .references ? "Extracting..." : "Extract References")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(activeAction == .references ? .orange : .accentColor)
+                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
+                        }
+                        .padding(12)
+                    }
+                }
+                .padding(.horizontal)
+
+                // Output Area
+                GroupBox("Output") {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        HStack {
+                            if !summaryText.isEmpty {
+                                Button(action: { summaryText = ""; activeAction = nil }) {
+                                    Label("Clear", systemImage: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundColor(.red)
+                                .font(.caption)
+
+                                if summaryText.contains("@article") {
+                                    Button(action: exportBibFile) {
+                                        Label("Save .bib", systemImage: "square.and.arrow.down")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .font(.caption)
+                                }
+                            }
+                            Spacer()
+                        }
+
+                        ZStack(alignment: .topTrailing) {
+                            if summaryText.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(.purple.opacity(0.3))
+                                    Text("Choose an action above to get started")
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 280)
+                            } else {
+                                ScrollView {
+                                    Text(summaryText)
+                                        .textSelection(.enabled)
+                                        .font(.system(.body, design: summaryText.contains("@article") ? .monospaced : .default))
+                                        .lineSpacing(4)
+                                        .padding()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(minHeight: 280)
+
+                                Button(action: {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(summaryText, forType: .string)
+                                }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 14))
+                                }
+                                .buttonStyle(.borderless)
+                                .padding(8)
+                                .help("Copy to Clipboard")
+                            }
+                        }
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(.vertical)
+        }
+    }
+
+    private func exportBibFile() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "bib")!]
+        panel.nameFieldStringValue = "citations.bib"
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            try? summaryText.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func generateBibEntry() {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard !checkedFiles.isEmpty else { return }
+
+        isSummarizing = true
+        summaryText = allowOnlineLookup ? "Fetching metadata online..." : "Extracting metadata..."
+
+        Task {
+            var combinedBib = ""
+            for file in checkedFiles {
+                if let bib = await extractBibTeX(url: file.url, allowOnline: allowOnlineLookup) {
+                    combinedBib += bib + "\n\n"
+                }
+            }
+
+            await MainActor.run {
+                summaryText = combinedBib.isEmpty ? "Could not extract metadata for BibTeX." : combinedBib
+                isSummarizing = false
+            }
+        }
+    }
+
+    private func generateSummary() {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard let file = checkedFiles.first else { return }
+
+        isSummarizing = true
+        summaryText = ""
+
+        Task {
+            if let summary = summarizePDF(url: file.url, maxSentences: summaryLength.rawValue, password: nil) {
+                await MainActor.run {
+                    summaryText = summary
+                    isSummarizing = false
+                }
+            } else {
+                await MainActor.run {
+                    summaryText = "Could not extract text from this PDF. It might be a scanned image without OCR."
+                    isSummarizing = false
+                }
+            }
+        }
+    }
+    
+    private func extractReferencesAction() {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard let file = checkedFiles.first else { return }
+        
+        isSummarizing = true
+        summaryText = "Scanning for references and extracting DOIs..."
+        
+        Task {
+            let references = await extractReferences(url: file.url)
+            
+            await MainActor.run {
+                if references.isEmpty {
+                    summaryText = "No references found or unable to extract DOIs."
+                } else {
+                    let header = "// Extracted \(references.count) reference(s)\n// Verified entries fetched from CrossRef API\n\n"
+                    summaryText = header + references.joined(separator: "\n\n")
+                }
+                isSummarizing = false
+            }
+        }
     }
 }

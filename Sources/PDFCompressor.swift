@@ -4,6 +4,7 @@ import Quartz
 import UniformTypeIdentifiers
 import CoreGraphics
 import ImageIO
+import NaturalLanguage
 
 
 // Helper for Image Extraction
@@ -336,157 +337,713 @@ func extractTextFromPDF(url: URL, password: String? = nil) -> String? {
     return fullText.isEmpty ? nil : fullText
 }
 
-/// Summarize text using NaturalLanguage framework (extractive summarization)
-/// Summarize text using NaturalLanguage semantic embeddings
-func summarizeText(_ text: String, maxSentences: Int = 5) -> String {
-    // 1. Clean Text: Remove probable headers/footers (lines that appear too frequently or are just numbers)
-    var lines = text.components(separatedBy: .newlines)
-    let totalLines = lines.count
+/// Fetch metadata from CrossRef JSON API (requires internet)
+struct CrossRefMetadata {
+    let authors: String?
+    let title: String?
+    let journal: String?
+    let volume: String?
+    let issue: String?
+    let pages: String?
+}
+
+func fetchMetadataFromDOI(_ doi: String) async -> CrossRefMetadata? {
+    // Use JSON API instead of BibTeX for cleaner parsing
+    let urlString = "https://api.crossref.org/works/\(doi)"
+    guard let url = URL(string: urlString) else { return nil }
+
+    do {
+        let (data, response) = try await URLSession.shared.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return nil
+        }
+
+        // Parse JSON to extract metadata
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? [String: Any] {
+
+            // Extract authors
+            var authorNames: [String] = []
+            if let authors = message["author"] as? [[String: Any]] {
+                for author in authors {
+                    var name = ""
+                    if let given = author["given"] as? String,
+                       let family = author["family"] as? String {
+                        name = "\(given) \(family)"
+                    } else if let family = author["family"] as? String {
+                        name = family
+                    }
+
+                    if !name.isEmpty {
+                        authorNames.append(name)
+                    }
+                }
+            }
+
+            // Extract title (it's an array, take first element)
+            var titleString: String? = nil
+            if let titleArray = message["title"] as? [String], let firstTitle = titleArray.first {
+                titleString = firstTitle
+            }
+
+            // Extract volume
+            var volumeString: String? = nil
+            if let volume = message["volume"] as? String {
+                volumeString = volume
+            }
+
+            // Extract issue number
+            var issueString: String? = nil
+            if let issue = message["issue"] as? String {
+                issueString = issue
+            }
+
+            // Extract page range
+            var pagesString: String? = nil
+            if let page = message["page"] as? String {
+                pagesString = page
+            }
+
+            // Extract journal name (container-title is an array)
+            var journalString: String? = nil
+            if let containerTitle = message["container-title"] as? [String], let firstJournal = containerTitle.first {
+                journalString = firstJournal
+            }
+
+            return CrossRefMetadata(
+                authors: authorNames.isEmpty ? nil : authorNames.joined(separator: " and "),
+                title: titleString,
+                journal: journalString,
+                volume: volumeString,
+                issue: issueString,
+                pages: pagesString
+            )
+        }
+    } catch {
+        // Network error - silently return nil
+        return nil
+    }
+
+    return nil
+}
+
+/// Extract BibTeX metadata from PDF with optional online lookup
+func extractBibTeX(url: URL, allowOnline: Bool = false) async -> String? {
+    guard let doc = PDFDocument(url: url) else { return nil }
+
+    // First, try to extract DOI (works offline)
+    var doi = ""
+    if let firstPage = doc.page(at: 0), let text = firstPage.string {
+        let doiPattern = #"10\.\d{4,9}/[-._;()/:A-Z0-9]+"#
+        if let range = text.range(of: doiPattern, options: [.regularExpression, .caseInsensitive]) {
+            doi = String(text[range])
+        }
+    }
+
+    // Always do offline extraction first (your clean format)
+    var offlineBib = extractBibTeXOffline(url: url, doc: doc, extractedDOI: doi)
+
+    // If online lookup is allowed and we have a DOI, enhance with metadata from CrossRef
+    if !doi.isEmpty && allowOnline, let bib = offlineBib {
+        if let metadata = await fetchMetadataFromDOI(doi) {
+            var enhancedBib = bib
+
+            // Check if offline title looks suspicious (common bad patterns)
+            let suspiciousTitlePatterns = [
+                #"J\. Mech\. Phys\. Solids \d+"#,     // Citation line extracted as title
+                #"Comput\. Methods Appl\. Mech"#,      // Another citation line pattern
+                #"journal homepage"#,                  // Includes webpage text
+                #"www\."#,                             // Contains URL
+                #"elsevier\.com"#,                     // Contains publisher URL
+                #"Received date"#,                     // Includes metadata
+                #"^\d{3,}"#,                           // Starts with page number
+                #"\(\d{4}\)\s+\d{5,}"#                 // Contains (year) followed by article number
+            ]
+
+            var titleIsSuspicious = false
+            for pattern in suspiciousTitlePatterns {
+                if bib.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
+                    titleIsSuspicious = true
+                    break
+                }
+            }
+
+            // Replace title if it's suspicious and we have a good online title
+            if titleIsSuspicious, let onlineTitle = metadata.title {
+                let titlePattern = #"title = \{\{[^}]+\}\}"#
+                if enhancedBib.range(of: titlePattern, options: .regularExpression) != nil {
+                    enhancedBib = enhancedBib.replacingOccurrences(
+                        of: titlePattern,
+                        with: "title = {\(onlineTitle)}",
+                        options: .regularExpression
+                    )
+                }
+            }
+
+            // Always replace authors with complete list from CrossRef
+            if let onlineAuthors = metadata.authors {
+                let authorPattern = #"author = \{[^}]+\}"#
+                if enhancedBib.range(of: authorPattern, options: .regularExpression) != nil {
+                    enhancedBib = enhancedBib.replacingOccurrences(
+                        of: authorPattern,
+                        with: "author = {\(onlineAuthors)}",
+                        options: .regularExpression
+                    )
+                }
+            }
+
+            // Always replace journal name with correct one from CrossRef
+            if let onlineJournal = metadata.journal {
+                let journalPattern = #"journal = \{[^}]+\}"#
+                if enhancedBib.range(of: journalPattern, options: .regularExpression) != nil {
+                    enhancedBib = enhancedBib.replacingOccurrences(
+                        of: journalPattern,
+                        with: "journal = {\(onlineJournal)}",
+                        options: .regularExpression
+                    )
+                }
+            }
+
+            // Add or replace volume, pages, and issue if available from CrossRef
+            if let volume = metadata.volume {
+                if enhancedBib.contains("volume = ") {
+                    // Replace existing volume
+                    let volumePattern = #"volume = \{[^}]*\}"#
+                    enhancedBib = enhancedBib.replacingOccurrences(
+                        of: volumePattern,
+                        with: "volume = {\(volume)}",
+                        options: .regularExpression
+                    )
+                } else {
+                    // Add volume field after journal
+                    if let journalRange = enhancedBib.range(of: #"journal = \{[^}]+\}"#, options: .regularExpression) {
+                        let insertPos = journalRange.upperBound
+                        enhancedBib.insert(contentsOf: ",\n    volume = {\(volume)}", at: insertPos)
+                    }
+                }
+            }
+
+            if let pages = metadata.pages {
+                if enhancedBib.contains("pages = ") {
+                    // Replace existing pages
+                    let pagesPattern = #"pages = \{[^}]*\}"#
+                    enhancedBib = enhancedBib.replacingOccurrences(
+                        of: pagesPattern,
+                        with: "pages = {\(pages)}",
+                        options: .regularExpression
+                    )
+                } else {
+                    // Add pages field after volume (or journal if no volume)
+                    if let volumeRange = enhancedBib.range(of: #"volume = \{[^}]+\}"#, options: .regularExpression) {
+                        let insertPos = volumeRange.upperBound
+                        enhancedBib.insert(contentsOf: ",\n    pages = {\(pages)}", at: insertPos)
+                    } else if let journalRange = enhancedBib.range(of: #"journal = \{[^}]+\}"#, options: .regularExpression) {
+                        let insertPos = journalRange.upperBound
+                        enhancedBib.insert(contentsOf: ",\n    pages = {\(pages)}", at: insertPos)
+                    }
+                }
+            }
+
+            if let issue = metadata.issue {
+                if enhancedBib.contains("number = ") {
+                    // Replace existing number (issue)
+                    let numberPattern = #"number = \{[^}]*\}"#
+                    enhancedBib = enhancedBib.replacingOccurrences(
+                        of: numberPattern,
+                        with: "number = {\(issue)}",
+                        options: .regularExpression
+                    )
+                } else {
+                    // Add number field after volume
+                    if let volumeRange = enhancedBib.range(of: #"volume = \{[^}]+\}"#, options: .regularExpression) {
+                        let insertPos = volumeRange.upperBound
+                        enhancedBib.insert(contentsOf: ",\n    number = {\(issue)}", at: insertPos)
+                    } else if let journalRange = enhancedBib.range(of: #"journal = \{[^}]+\}"#, options: .regularExpression) {
+                        let insertPos = journalRange.upperBound
+                        enhancedBib.insert(contentsOf: ",\n    number = {\(issue)}", at: insertPos)
+                    }
+                }
+            }
+
+            // Update note to indicate online enhancement
+            return enhancedBib.replacingOccurrences(
+                of: "Extracted from",
+                with: "Metadata enhanced via CrossRef API from"
+            )
+        }
+    }
+
+    return offlineBib
+}
+
+/// Extract BibTeX metadata from PDF (offline version)
+private func extractBibTeXOffline(url: URL, doc: PDFDocument, extractedDOI: String) -> String? {
+    let attrs = doc.documentAttributes
+
+    var title = attrs?[PDFDocumentAttribute.titleAttribute] as? String
+    var author = attrs?[PDFDocumentAttribute.authorAttribute] as? String
+    let creationDate = attrs?[PDFDocumentAttribute.creationDateAttribute] as? Date
+    var year = Calendar.current.component(.year, from: creationDate ?? Date())
+
+    // Strategy 1: Trust Metadata if it looks high quality
+    var authorFromMetadata = false
+    if let metaAuthor = author,
+       metaAuthor.count > 5,
+       metaAuthor.split(separator: " ").contains(where: { $0.count > 2 }),
+       !metaAuthor.lowercased().contains("unknown") {
+        authorFromMetadata = true
+    } else {
+        author = nil // Force text extraction if metadata is poor
+    }
+
+    var journal = "Unknown Journal"
+    var volume = ""
+    var number = ""
+    var pages = ""
+    var doi = extractedDOI // Use the DOI already extracted
     
+    if let firstPage = doc.page(at: 0), let text = firstPage.string {
+        let allLines = text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        let lines = allLines.filter { $0.count > 2 }
+
+        // DOI already extracted and passed in as parameter
+        
+        // 1. Identify Journal / Citation Line
+        let citationLinePattern = #"^([\w\s&]+)\s+(\d+)\s*\((\d{4})\)\s*(\d+)"#
+        for line in lines.prefix(10) {
+            if let _ = line.range(of: citationLinePattern, options: .regularExpression) {
+                let nsLine = line as NSString
+                let regex = try? NSRegularExpression(pattern: citationLinePattern)
+                if let firstMatch = regex?.firstMatch(in: line, range: NSRange(location: 0, length: line.utf16.count)) {
+                    journal = nsLine.substring(with: firstMatch.range(at: 1)).trimmingCharacters(in: .whitespaces)
+                    volume = nsLine.substring(with: firstMatch.range(at: 2))
+                    if let y = Int(nsLine.substring(with: firstMatch.range(at: 3))) { year = y }
+                    pages = nsLine.substring(with: firstMatch.range(at: 4))
+                    break
+                }
+            }
+        }
+        
+        if journal == "Unknown Journal" {
+            let jPatterns = [#"Journal of [\w\s&]+"#, #"Int\.? J\.? of [\w\s&]+"#, #"Nature [\w\s]*"#, #"Science"#]
+            for p in jPatterns {
+                if let r = text.range(of: p, options: [.regularExpression, .caseInsensitive]) {
+                    journal = String(text[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    break
+                }
+            }
+        }
+        
+        // 2. Score lines to find the Title
+        var titleCandidates: [(line: String, score: Int, index: Int)] = []
+        let noise = ["Contents lists", "homepage", "www.", "Research Article", "Full Length", "ScienceDirect",
+                     "article info", "a r t i c l e", "abstract", "keywords", "Polish Academy"]
+
+        for (i, line) in lines.prefix(20).enumerated() {
+            var score = 0
+            if line.count > 30 && line.count < 250 { score += 10 }
+            if line == line.uppercased() { score += 5 }
+            if line.contains(journal) { score -= 25 }
+            if noise.contains(where: { line.localizedCaseInsensitiveContains($0) }) { score -= 30 }
+
+            if let mt = attrs?[PDFDocumentAttribute.titleAttribute] as? String {
+                let cleanMT = mt.replacingOccurrences(of: "[formula omitted]", with: "").trimmingCharacters(in: .whitespaces)
+                if !cleanMT.isEmpty && line.lowercased().contains(cleanMT.lowercased()) { score += 20 }
+            }
+
+            if score > 0 { titleCandidates.append((line, score, i)) }
+        }
+        
+        let bestTitle = titleCandidates.sorted(by: { $0.score > $1.score }).first
+        if let bt = bestTitle {
+            var mergedTitle = bt.line
+            var lastIdx = bt.index
+            
+            // Multi-line Title Merging
+            let prepositions = ["of", "in", "and", "on", "at", "for", "with", "by"]
+            let stopWords = ["article", "info", "abstract", "keywords", "polish academy", "institute",
+                           "university", "department", "ippt", "received", "revised", "accepted"]
+
+            while lastIdx + 1 < lines.count {
+                let current = lines[lastIdx].lowercased()
+                let next = lines[lastIdx + 1]
+                let nextLower = next.lowercased()
+
+                // Stop if next line looks like metadata/affiliation
+                if stopWords.contains(where: { nextLower.contains($0) }) {
+                    break
+                }
+
+                // Stop if next line contains author-like patterns (initials with dots)
+                if next.range(of: #"\b[A-Z]\.\s*[A-Z]\."#, options: .regularExpression) != nil {
+                    break
+                }
+
+                let endsWithPreposition = prepositions.contains { current.hasSuffix(" " + $0) || current.hasSuffix($0) }
+                let endsWithHyphen = current.hasSuffix("-")
+                let nextStartsLower = next.first?.isLowercase ?? false
+
+                // Only merge if it's clearly a continuation
+                if endsWithPreposition || endsWithHyphen || nextStartsLower {
+                    mergedTitle += (endsWithHyphen ? "" : " ") + next
+                    lastIdx += 1
+                    if lastIdx > bt.index + 2 { break }  // Max 3 lines for title
+                } else {
+                    break
+                }
+            }
+
+            // Clean up title: Remove author names and affiliations that may have been captured
+            // Look for author-like patterns (initials) within the title and truncate there
+            if let authorPattern = mergedTitle.range(of: #"\s+[A-Z]\.\s+[A-Z][a-z]+"#, options: .regularExpression) {
+                // Found something like " K. Tůma" - truncate before it
+                mergedTitle = String(mergedTitle[..<authorPattern.lowerBound])
+            }
+
+            // Also remove common metadata that might have been appended
+            let metadataPatterns = ["Institute of", "IPPT", "Polish Academy", "article info", "a r t i c l e"]
+            for pattern in metadataPatterns {
+                if let range = mergedTitle.range(of: pattern, options: .caseInsensitive) {
+                    mergedTitle = String(mergedTitle[..<range.lowerBound])
+                    break
+                }
+            }
+
+            title = mergedTitle.trimmingCharacters(in: .whitespaces)
+
+            // 3. Find Authors (look for lines following the title) if metadata was poor
+            if !authorFromMetadata {
+                var authorCandidates: [(line: String, score: Int)] = []
+                for i in (lastIdx + 1)...min(lastIdx + 6, lines.count - 1) {
+                    let line = lines[i]
+                    let capitalCount = line.filter { $0.isUppercase }.count
+                    if capitalCount < 2 { continue }
+                    
+                    var score = 0
+                    if line.contains(",") || line.contains(" and ") || line.contains("&") { score += 15 }
+                    if line.contains("*") || line.contains("†") || line.contains("‡") { score += 5 }
+                    score += min(capitalCount * 2, 20)
+                    
+                    if line.contains("@") { score -= 10 }
+                    if line.count < 8 { score -= 10 }
+                    if (line.contains("University") || line.contains("Department") || line.contains("Institute")) && !line.contains(",") {
+                        score -= 20
+                    }
+                    if line.first?.isNumber == true { score -= 15 }
+                    
+                    if score > 0 { authorCandidates.append((line, score)) }
+                }
+                
+                if !authorCandidates.isEmpty {
+                    let sortedCandidates = authorCandidates.sorted(by: { $0.score > $1.score })
+                    let topScore = sortedCandidates[0].score
+                    
+                    // Merge lines with scores within 10 points of top score (likely continuation lines)
+                    let authorLines = authorCandidates
+                        .filter { $0.score >= topScore - 10 }
+                        .map { $0.line }
+                    
+                    author = authorLines.joined(separator: " ")
+                }
+            }
+        }
+        
+        let cy = Calendar.current.component(.year, from: Date())
+        if year == cy {
+            let yPat = #"\b(19\d{2}|20[0-2]\d)\b"#
+            if let r = text.range(of: yPat, options: .regularExpression), let yInt = Int(text[r]) { year = yInt }
+        }
+    }
+    
+    // Final Cleanup & Assembly
+    var finalTitle = (title ?? url.deletingPathExtension().lastPathComponent)
+        .replacingOccurrences(of: "[formula omitted]", with: "Formula")
+        .replacingOccurrences(of: "  ", with: " ")
+        .trimmingCharacters(in: .whitespaces)
+
+    if finalTitle.lowercased().starts(with: journal.lowercased()) {
+        finalTitle = String(finalTitle.dropFirst(journal.count)).trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+    }
+
+    // Clean up journal name (remove common webpage artifacts)
+    var finalJournal = journal
+        .replacingOccurrences(of: #"\s*journal homepage.*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+        .replacingOccurrences(of: #"\s*Received date.*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+        .replacingOccurrences(of: #"\s*www\..*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    var finalAuthor = author ?? "Unknown Author"
+    if finalAuthor != "Unknown Author" {
+        // Step 1: Clean markers and extra whitespace
+        finalAuthor = finalAuthor
+            .replacingOccurrences(of: #"[\*†‡§\d]+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+
+        // Step 2: Remove obvious affiliation text BEFORE splitting
+        // Common affiliation keywords that shouldn't be in author names
+        let affiliationKeywords = ["University", "Department", "College", "Institute", "Laboratory",
+                                  "School", "Center", "Faculty", "Division", "Research",
+                                  "Hospital", "Clinic", "Foundation", "Society", "Academy",
+                                  "National", "International", "Japan", "USA", "China", "UK",
+                                  "Canada", "Germany", "France", "Australia", "Korea",
+                                  "Engineering", "Science", "Physics", "Chemistry", "Biology",
+                                  "Medicine", "Technology", "Medical", "Clinical"]
+
+        // Find where affiliations start by detecting affiliation keywords
+        var cutoffIndex = finalAuthor.endIndex
+        for keyword in affiliationKeywords {
+            if let range = finalAuthor.range(of: keyword, options: .caseInsensitive) {
+                if range.lowerBound < cutoffIndex {
+                    cutoffIndex = range.lowerBound
+                }
+            }
+        }
+
+        // If we found affiliations, cut them off
+        if cutoffIndex != finalAuthor.endIndex {
+            finalAuthor = String(finalAuthor[..<cutoffIndex]).trimmingCharacters(in: .whitespaces)
+        }
+
+        // Step 3: Normalize multi-author separators (don't touch spaces within names)
+        finalAuthor = finalAuthor
+            .replacingOccurrences(of: ";", with: " and ")
+            .replacingOccurrences(of: " & ", with: " and ")
+            .replacingOccurrences(of: ",", with: " and ")
+            .replacingOccurrences(of: #"\s+and\s+"#, with: " and ", options: .regularExpression)
+
+        // Step 4: Split by "and" and validate each author name
+        let authorParts = finalAuthor.components(separatedBy: " and ")
+        var cleanedAuthors: [String] = []
+
+        for part in authorParts {
+            let words = part.components(separatedBy: " ")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { word in
+                    // Keep words that start with uppercase and don't look like affiliations
+                    guard word.count > 0 && word.first?.isUppercase == true else { return false }
+
+                    // Filter out common affiliation words that might have slipped through
+                    let lowerWord = word.lowercased()
+                    if affiliationKeywords.contains(where: { $0.lowercased() == lowerWord }) {
+                        return false
+                    }
+
+                    return true
+                }
+
+            // A valid author name should have 1-4 words typically
+            if !words.isEmpty && words.count <= 4 {
+                let cleanedName = words.joined(separator: " ")
+                // Should be at least 2 chars and not be a single initial
+                if cleanedName.count >= 2 {
+                    cleanedAuthors.append(cleanedName)
+                }
+            }
+        }
+
+        finalAuthor = cleanedAuthors.joined(separator: " and ")
+    }
+
+    if finalAuthor.isEmpty { finalAuthor = "Unknown Author" }
+    
+    let authorLast = finalAuthor.components(separatedBy: " ").last?.filter { $0.isLetter } ?? "Author"
+    let titleFirst = finalTitle.components(separatedBy: " ").filter { $0.count > 3 }.first?.filter { $0.isLetter } ?? "Title"
+    let citeKey = "\(authorLast)\(year)\(titleFirst)".lowercased()
+    
+    var bib = "@article{\(citeKey),\n"
+    bib += "    author = {\(finalAuthor)},\n"
+    bib += "    title = {\(finalTitle)},\n"
+    bib += "    year = {\(year)},\n"
+    bib += "    journal = {\(finalJournal)}"
+    
+    if !volume.isEmpty { bib += ",\n    volume = {\(volume)}" }
+    if !number.isEmpty { bib += ",\n    number = {\(number)}" }
+    if !pages.isEmpty { bib += ",\n    pages = {\(pages)}" }
+    if !doi.isEmpty { bib += ",\n    doi = {\(doi)}" }
+    
+    bib += ",\n    note = {Extracted from \(url.lastPathComponent) by GhostPDF}\n"
+    bib += "}"
+    
+    return bib
+}
+
+/// Extract Abstract section from academic PDF text
+func extractAbstract(from text: String) -> String? {
+    // Strategy 1: Look for explicit Abstract section
+    let abstractPattern = #"(?:Abstract|ABSTRACT)[:\s\n]+([\s\S]+?)(?=\n\s*\n\s*[A-Z1]|\nIntroduction|\n1\.|\nKeywords|©|\nReceived)"#
+
+    if let range = text.range(of: abstractPattern, options: .regularExpression) {
+        var abstract = String(text[range])
+        // Remove "Abstract" header
+        abstract = abstract.replacingOccurrences(of: #"^Abstract[:\s]*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        abstract = abstract.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Quality check: abstracts are usually 50-500 words
+        let wordCount = abstract.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+        if wordCount >= 20 && wordCount <= 600 {
+            return abstract
+        }
+    }
+
+    return nil
+}
+
+/// Summarize text using improved position + keyword-based scoring for academic papers
+func summarizeText(_ text: String, maxSentences: Int = 5) -> String {
+    // Strategy 1: Try to extract abstract first (best for academic papers)
+    if let abstract = extractAbstract(from: text) {
+        // If abstract is short enough, return it directly
+        let sentences = abstract.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        if sentences.count <= maxSentences {
+            return abstract
+        }
+        // Otherwise, summarize the abstract itself
+    }
+
+    // Strategy 2: Position + Keyword-based extractive summarization
+    var lines = text.components(separatedBy: .newlines)
+
     // Count line occurrences to find repeated headers/footers
     var lineCounts: [String: Int] = [:]
     for line in lines {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
+        if !trimmed.isEmpty && trimmed.count > 5 {
             lineCounts[trimmed, default: 0] += 1
         }
     }
-    
-    // Filter out lines that appear on >20% of pages (assuming ~30 lines/page) or are just page numbers
-    let probabilityThreshold = max(2, totalLines / 30 / 5) 
-    
+
+    // Filter out repeated lines and noise
+    let probabilityThreshold = max(3, lines.count / 40)
     lines = lines.filter { line in
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return false }
-        
-        // Remove lines that are just numbers (likely page numbers)
-        if Int(trimmed) != nil || trimmed.range(of: #"^Page \d+$"#, options: .regularExpression) != nil {
+        if trimmed.isEmpty || trimmed.count < 10 { return false }
+
+        // Remove page numbers
+        if Int(trimmed) != nil || trimmed.range(of: #"^(Page )?\d+$"#, options: .regularExpression) != nil {
             return false
         }
-        
+
         // Remove repeated headers/footers
         if let count = lineCounts[trimmed], count > probabilityThreshold {
             return false
         }
-        
+
         return true
     }
-    
+
     let cleanText = lines.joined(separator: " ")
-    
-    // 2. Identify Sentences
+
+    // Tokenize sentences
     let tokenizer = NLTokenizer(unit: .sentence)
     tokenizer.string = cleanText
-    
-    var uniqueSentences: [String] = []
+
+    var sentences: [String] = []
     var seenSentences: Set<String> = []
-    
+
     tokenizer.enumerateTokens(in: cleanText.startIndex..<cleanText.endIndex) { range, _ in
         let sentence = String(cleanText[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Quality filter: length > 30 chars, starts with capital letter
-        if sentence.count > 30, sentence.first?.isUppercase == true, !seenSentences.contains(sentence) {
-            uniqueSentences.append(sentence)
+
+        // Quality filter
+        if sentence.count > 40 && sentence.count < 500,
+           sentence.first?.isUppercase == true,
+           !seenSentences.contains(sentence) {
+            sentences.append(sentence)
             seenSentences.insert(sentence)
         }
         return true
     }
-    
-    if uniqueSentences.isEmpty { return text }
-    if uniqueSentences.count <= maxSentences { return uniqueSentences.joined(separator: "\n\n") }
-    
-    // 3. Semantic Analysis using NLEmbedding
-    guard let embedding = NLEmbedding.sentenceEmbedding(for: .english) else {
-        // Fallback to simple first-N sentences if embedding invalid
-        return uniqueSentences.prefix(maxSentences).joined(separator: "\n\n")
-    }
-    
-    // Calculate document centroid (average meaning)
-    var centroidVector: [Double] = []
-    var vectorCount = 0
-    
-    // Cache sentence vectors
-    var sentenceVectors: [[Double]?] = Array(repeating: nil, count: uniqueSentences.count)
-    
-    for (i, sentence) in uniqueSentences.enumerated() {
-        if let vector = embedding.vector(for: sentence) {
-            sentenceVectors[i] = vector
-            if centroidVector.isEmpty {
-                centroidVector = vector
-            } else {
-                for j in 0..<vector.count {
-                    centroidVector[j] += vector[j]
-                }
-            }
-            vectorCount += 1
+
+    if sentences.isEmpty { return text }
+    if sentences.count <= maxSentences { return sentences.joined(separator: "\n\n") }
+
+    // Score sentences based on position + keywords (better for academic papers than centroid)
+    var scoredSentences: [(sentence: String, score: Double)] = []
+
+    // Academic paper importance keywords
+    let highValueKeywords = ["results", "findings", "conclude", "demonstrate", "show that", "found that",
+                             "significant", "novel", "propose", "present", "contribute", "discover"]
+    let mediumValueKeywords = ["method", "approach", "study", "research", "analyze", "investigate",
+                               "measure", "evaluate", "compare", "develop"]
+    let lowValueKeywords = ["however", "moreover", "furthermore", "therefore", "thus", "consequently"]
+
+    // Boilerplate phrases to penalize
+    let boilerplate = ["all rights reserved", "corresponding author", "copyright", "published by",
+                       "available online", "received", "revised", "accepted"]
+
+    for (i, sentence) in sentences.enumerated() {
+        var score = 0.0
+        let lowerSentence = sentence.lowercased()
+
+        // Position-based scoring (academic papers front-load important info)
+        if i < 5 {
+            score += 15.0  // First 5 sentences (likely abstract/intro)
+        } else if i < 15 {
+            score += 8.0   // Next 10 sentences
+        } else if i > sentences.count - 10 {
+            score += 10.0  // Last 10 sentences (conclusion)
+        } else {
+            score += 2.0   // Middle content
         }
-    }
-    
-    if vectorCount == 0 { return uniqueSentences.prefix(maxSentences).joined(separator: "\n\n") }
-    
-    // Average the centroid
-    for j in 0..<centroidVector.count {
-        centroidVector[j] /= Double(vectorCount)
-    }
-    
-    // 4. Score phrases by distance to centroid (Centrality)
-    var scoredSentences: [(index: Int, sentence: String, score: Double)] = []
-    
-    for (i, sentence) in uniqueSentences.enumerated() {
-        if let vector = sentenceVectors[i] {
-            // Cosine distance calculation manually since NLEmbedding.distance expects Strings
-            let dotProduct = zip(vector, centroidVector).map(*).reduce(0, +)
-            let magA = sqrt(vector.map { $0 * $0 }.reduce(0, +))
-            let magB = sqrt(centroidVector.map { $0 * $0 }.reduce(0, +))
-            let cosineSim = dotProduct / (magA * magB)
-            
-            // Distance = 1 - CosineSimilarity (approx)
-            // But we can just use CosineSimilarity directly for scoring
-            // Higher Cosine Similarity = Closer to centroid = Better Centrality
-            
-            // Boost first paragraph sentences slightly as they are usually introductory
-            let boost = (i < 3) ? 1.2 : 1.0
-            let score = cosineSim * boost
-            
-            scoredSentences.append((index: i, sentence: sentence, score: score))
-        }
-    }
-    
-    // 5. Select diversity (don't pick sentences that are too similar to already picked ones)
-    scoredSentences.sort { $0.score > $1.score }
-    
-    var selectedIndices: [Int] = []
-    var selectedVectors: [[Double]] = []
-    
-    for candidate in scoredSentences {
-        if selectedIndices.count >= maxSentences { break }
-        
-        let candidateVector = sentenceVectors[candidate.index]!
-        
-        // Diversity check
-        var isDistinct = true
-        for existingVector in selectedVectors {
-             let dotProduct = zip(candidateVector, existingVector).map(*).reduce(0, +)
-             let magA = sqrt(candidateVector.map { $0 * $0 }.reduce(0, +))
-             let magB = sqrt(existingVector.map { $0 * $0 }.reduce(0, +))
-             let similarity = dotProduct / (magA * magB)
-            
-            if similarity > 0.85 { // Threshold: If > 85% similar, skip it
-                isDistinct = false
-                break
+
+        // Keyword scoring
+        for keyword in highValueKeywords {
+            if lowerSentence.contains(keyword) {
+                score += 5.0
             }
         }
-        
-        if isDistinct {
-            selectedIndices.append(candidate.index)
-            selectedVectors.append(candidateVector)
+
+        for keyword in mediumValueKeywords {
+            if lowerSentence.contains(keyword) {
+                score += 2.0
+            }
+        }
+
+        for keyword in lowValueKeywords {
+            if lowerSentence.contains(keyword) {
+                score += 1.0
+            }
+        }
+
+        // Length preference (not too short, not too long)
+        if sentence.count > 80 && sentence.count < 250 {
+            score += 3.0
+        }
+
+        // Penalize boilerplate
+        for phrase in boilerplate {
+            if lowerSentence.contains(phrase) {
+                score -= 20.0
+            }
+        }
+
+        // Penalize references to figures/tables without context
+        if lowerSentence.range(of: #"\b(fig\.|figure|table)\s+\d+"#, options: .regularExpression) != nil {
+            score -= 3.0
+        }
+
+        scoredSentences.append((sentence, score))
+    }
+
+    // Sort by score and take top N
+    let topSentences = scoredSentences
+        .sorted { $0.score > $1.score }
+        .prefix(maxSentences)
+        .map { $0.sentence }
+
+    // Return in original order for coherence
+    var result: [String] = []
+    for sentence in sentences {
+        if topSentences.contains(sentence) {
+            result.append(sentence)
+            if result.count >= maxSentences { break }
         }
     }
-    
-    // Sort by original position
-    selectedIndices.sort()
-    
-    return selectedIndices.map { uniqueSentences[$0] }.joined(separator: "\n\n")
+
+    return result.joined(separator: "\n\n")
 }
 
 /// Convenience: Summarize a PDF file directly
@@ -1493,5 +2050,783 @@ class PDFCompressor {
          try await executeGhostscript(args: args)
          progressHandler(1.0)
     }
+}
+
+/// Extract references from PDF's bibliography section and convert to BibTeX using CrossRef API
+func extractReferences(url: URL) async -> [String] {
+    guard let doc = PDFDocument(url: url) else { return [] }
+    
+    var references: [String] = []
+    var referenceText = ""
+    var startCollecting = false
+    var pagesCollected = 0
+    
+    // 1. Find References section and extract ALL text until end
+    for pageIndex in 0..<doc.pageCount {
+        guard let page = doc.page(at: pageIndex),
+              let text = page.string else { continue }
+        
+        let lines = text.components(separatedBy: .newlines)
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            
+            // Detect start of references section
+            if !startCollecting {
+                let refHeaders = ["References", "REFERENCES", "Bibliography", "BIBLIOGRAPHY", 
+                                 "Works Cited", "WORKS CITED", "Literature Cited", "LITERATURE CITED"]
+                if refHeaders.contains(where: { trimmed.hasPrefix($0) || trimmed == $0 }) {
+                    startCollecting = true
+                    print("DEBUG - Found references section on page \(pageIndex)")
+                    continue
+                }
+            }
+            
+            if startCollecting {
+                referenceText += line + "\n"
+            }
+        }
+        
+        // Keep collecting until end of document (references usually go to the end)
+        if startCollecting {
+            pagesCollected += 1
+        }
+    }
+    
+    print("DEBUG - Collected \(pagesCollected) pages of references, total chars: \(referenceText.count)")
+    
+    if referenceText.isEmpty {
+        return ["// No references section found in PDF"]
+    }
+    
+    // 2. Split into individual reference entries
+    let refLines = referenceText.components(separatedBy: .newlines)
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }
+    
+    var currentRef = ""
+    var individualRefs: [String] = []
+    
+    // First, check if references are numbered or name-based
+    let hasNumberedRefs = refLines.contains { line in
+        line.range(of: #"^\[\d+\]|^\d+\.\s|^\(\d+\)"#, options: .regularExpression) != nil
+    }
+    
+    print("DEBUG - Reference format: \(hasNumberedRefs ? "numbered" : "name-based")")
+    
+    for line in refLines {
+        var startsNewRef = false
+        
+        if hasNumberedRefs {
+            // Numbered reference patterns
+            let patterns = [
+                #"^\[\d+\]"#,           // [1] format
+                #"^\d+\.\s"#,           // 1. format
+                #"^\(\d+\)"#            // (1) format
+            ]
+            for pattern in patterns {
+                if line.range(of: pattern, options: .regularExpression) != nil {
+                    startsNewRef = true
+                    break
+                }
+            }
+        } else {
+            // Name-based references - simpler heuristic
+            // If current ref is long enough and new line looks like it starts with author name:
+            // - Starts with capital letter
+            // - Has comma or period in first 20 characters (author initial)
+            // - Doesn't start with common continuation words
+            
+            let startsWithCap = line.first?.isUppercase ?? false
+            let first20 = String(line.prefix(20))
+            let hasEarlyPunctuation = first20.contains(",") || first20.contains(".")
+            let continuationWords = ["The", "A ", "An ", "In ", "On ", "And ", "For ", "With ", "From "]
+            let isContinuation = continuationWords.contains { line.hasPrefix($0) }
+            
+            if startsWithCap && hasEarlyPunctuation && !isContinuation {
+                if currentRef.count > 50 || currentRef.isEmpty {
+                    startsNewRef = true
+                }
+            }
+        }
+        
+        if startsNewRef {
+            if !currentRef.isEmpty && currentRef.count > 30 {
+                individualRefs.append(currentRef)
+            }
+            currentRef = line
+        } else {
+            currentRef += " " + line
+        }
+    }
+    if !currentRef.isEmpty && currentRef.count > 30 {
+        individualRefs.append(currentRef)
+    }
+    
+    print("DEBUG - Found \(individualRefs.count) individual references")
+    
+    // 3. Send raw reference text directly to CrossRef (let their search engine parse it)
+    var processedKeys: Set<String> = []
+    var successCount = 0
+    var failCount = 0
+    
+    for (index, refText) in individualRefs.enumerated() {
+        // Clean up the reference text
+        let cleanedRef = refText
+            .replacingOccurrences(of: #"^\[\d+\]|\d+\."#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        
+        // Skip very short references
+        if cleanedRef.count < 20 {
+            print("DEBUG - Skipping short ref: \(cleanedRef.prefix(30))...")
+            continue
+        }
+        
+        // Use more of the text for deduplication (100 chars)
+        let key = String(cleanedRef.prefix(100)).lowercased()
+        if processedKeys.contains(key) {
+            print("DEBUG - Skipping duplicate: \(cleanedRef.prefix(30))...")
+            continue
+        }
+        processedKeys.insert(key)
+        
+        // Send raw text to CrossRef bibliographic search
+        if let bibtex = await queryBibTeXWithRawText(cleanedRef) {
+            references.append(bibtex)
+            successCount += 1
+            print("DEBUG - [CrossRef] Found: \(cleanedRef.prefix(40))...")
+        } else {
+            print("DEBUG - CrossRef failed, trying Semantic Scholar...")
+            if let bibtex = await querySemanticScholar(cleanedRef) {
+                references.append(bibtex)
+                successCount += 1
+                print("DEBUG - [SemanticScholar] Found: \(cleanedRef.prefix(40))...")
+            } else {
+                failCount += 1
+                print("DEBUG - No match found for: \(cleanedRef.prefix(40))...")
+            }
+        }
+        
+        // Rate limiting
+        if index < individualRefs.count - 1 {
+            try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
+        }
+    }
+    
+    print("DEBUG - Final: \(successCount) found, \(failCount) failed")
+    return references.isEmpty ? ["// No valid references found via CrossRef"] : references
+}
+
+/// Query CrossRef with raw reference text and build clean BibTeX from JSON
+private func queryBibTeXWithRawText(_ refText: String) async -> String? {
+    // Clean and prepare query text
+    var cleanedText = String(refText.prefix(200))
+    
+    // Replace special characters that might break the query
+    cleanedText = cleanedText
+        .replacingOccurrences(of: "—", with: "-")  // em-dash
+        .replacingOccurrences(of: "–", with: "-")  // en-dash
+        .replacingOccurrences(of: "'", with: "'")  // smart quote
+        .replacingOccurrences(of: "'", with: "'")
+    
+    // Detect and fix concatenated text (like "AmbatiM,KruseR" -> "Ambati M, Kruse R")
+    // Check if text has very few spaces compared to its length
+    let spaceCount = cleanedText.filter { $0 == " " }.count
+    if spaceCount < cleanedText.count / 15 { // Very few spaces
+        // Add space before each capital letter that follows lowercase
+        var fixedText = ""
+        var prevChar: Character = " "
+        for char in cleanedText {
+            if char.isUppercase && prevChar.isLowercase {
+                fixedText += " "
+            }
+            fixedText += String(char)
+            prevChar = char
+        }
+        cleanedText = fixedText
+        print("DEBUG - Fixed concatenated text: \(cleanedText.prefix(50))...")
+    }
+    
+    // Check for DOI in the reference text - if found, use it directly
+    if let doiMatch = refText.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+        let doi = String(refText[doiMatch])
+        print("DEBUG - Found DOI: \(doi)")
+        
+        // Try to get BibTeX directly using DOI
+        let doiUrl = "https://api.crossref.org/works/\(doi)"
+        if let url = URL(string: doiUrl) {
+            var request = URLRequest(url: url)
+            request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+            
+            do {
+                let (data, _) = try await URLSession.shared.data(for: request)
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? [String: Any] {
+                    if let bibtex = buildBibTeXFromJSON(message) {
+                        print("DEBUG - DOI lookup successful")
+                        return bibtex
+                    }
+                }
+            } catch {
+                print("DEBUG - DOI lookup failed: \(error)")
+            }
+        }
+    }
+    
+    let queryText = cleanedText
+        .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    
+    guard !queryText.isEmpty else { return nil }
+    
+    // Request more results so we can validate
+    let urlString = "https://api.crossref.org/works?query.bibliographic=\(queryText)&rows=5"
+    guard let url = URL(string: urlString) else { 
+        print("DEBUG - Invalid CrossRef URL")
+        return nil 
+    }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+    
+    do {
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? [String: Any],
+           let items = message["items"] as? [[String: Any]] {
+            
+            // Extract year from reference text for validation
+            var refYear: String? = nil
+            if let yearMatch = refText.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression) {
+                refYear = String(refText[yearMatch])
+            }
+            
+            // Extract first author surname from reference for validation
+            var refAuthor: String? = nil
+            if let firstWord = refText.components(separatedBy: CharacterSet.alphanumerics.inverted).first,
+               firstWord.count >= 3,
+               firstWord.first?.isUppercase == true {
+                refAuthor = firstWord.lowercased()
+            }
+            
+            // Find best matching result
+            for item in items {
+                let score = item["score"] as? Double ?? 0
+                
+                // Get result year
+                var resultYear: String? = nil
+                if let published = item["published"] as? [String: Any],
+                   let dateParts = published["date-parts"] as? [[Int]],
+                   let firstDate = dateParts.first,
+                   let year = firstDate.first {
+                    resultYear = String(year)
+                } else if let issued = item["issued"] as? [String: Any],
+                          let dateParts = issued["date-parts"] as? [[Int]],
+                          let firstDate = dateParts.first,
+                          let year = firstDate.first {
+                    resultYear = String(year)
+                }
+                
+                // Get result author
+                var resultAuthor: String? = nil
+                if let authors = item["author"] as? [[String: Any]],
+                   let first = authors.first,
+                   let family = first["family"] as? String {
+                    resultAuthor = family.lowercased()
+                }
+                
+                // Debug: show comparison values
+                print("DEBUG - Comparing: refYear=\(refYear ?? "nil") vs resultYear=\(resultYear ?? "nil"), refAuthor=\(refAuthor ?? "nil") vs resultAuthor=\(resultAuthor ?? "nil")")
+                
+                // Validate: if we have year in reference, result year MUST match
+                var yearMatches = false
+                var authorMatches = false
+                
+                if let ry = refYear, let resY = resultYear {
+                    yearMatches = (ry == resY)
+                } else if refYear == nil {
+                    yearMatches = true
+                }
+                
+                if let ra = refAuthor, let resA = resultAuthor {
+                    authorMatches = (ra == resA || resA.hasPrefix(ra) || ra.hasPrefix(resA))
+                }
+                
+                // Only accept if year matches AND (author matches OR score is very high)
+                let isValid = yearMatches && (authorMatches || score > 100)
+
+                
+                if isValid {
+                    print("DEBUG - CrossRef match: year=\(resultYear ?? "nil"), author=\(resultAuthor ?? "nil"), score=\(score)")
+                    return buildBibTeXFromJSON(item)
+                }
+            }
+            
+            print("DEBUG - No valid CrossRef match found for: \(refText.prefix(40))...")
+        }
+    } catch {
+        print("DEBUG - CrossRef error: \(error)")
+    }
+    
+    return nil
+}
+
+/// Query OpenAlex API as fallback
+private func queryOpenAlex(_ refText: String) async -> String? {
+    // Extract key terms for search
+    let queryText = String(refText.prefix(150))
+        .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    
+    guard !queryText.isEmpty else { return nil }
+    
+    let urlString = "https://api.openalex.org/works?search=\(queryText)&per_page=3"
+    guard let url = URL(string: urlString) else { return nil }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+    
+    do {
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let results = json["results"] as? [[String: Any]] {
+            
+            // Extract year from reference for validation
+            var refYear: String? = nil
+            if let yearMatch = refText.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression) {
+                refYear = String(refText[yearMatch])
+            }
+            
+            for item in results {
+                // Get result year
+                let resultYear = item["publication_year"] as? Int
+                
+                // Validate year if present
+                if let ry = refYear, let resY = resultYear {
+                    if ry != String(resY) {
+                        continue // Skip if year doesn't match
+                    }
+                }
+                
+                // Build BibTeX from OpenAlex result
+                return buildBibTeXFromOpenAlex(item)
+            }
+        }
+    } catch {
+        print("DEBUG - OpenAlex error: \(error)")
+    }
+    
+    return nil
+}
+
+/// Build BibTeX from OpenAlex JSON response
+private func buildBibTeXFromOpenAlex(_ item: [String: Any]) -> String? {
+    // Extract title
+    let title = item["title"] as? String ?? ""
+    guard !title.isEmpty else { return nil }
+    
+    // Extract year
+    let year = item["publication_year"] as? Int ?? 0
+    
+    // Extract authors
+    var authors: [String] = []
+    if let authorships = item["authorships"] as? [[String: Any]] {
+        for authorship in authorships {
+            if let author = authorship["author"] as? [String: Any],
+               let name = author["display_name"] as? String {
+                authors.append(name)
+            }
+        }
+    }
+    
+    // Extract journal/venue
+    var journal = ""
+    if let primaryLocation = item["primary_location"] as? [String: Any],
+       let source = primaryLocation["source"] as? [String: Any],
+       let displayName = source["display_name"] as? String {
+        journal = displayName
+    }
+    
+    // Extract DOI
+    var doi = ""
+    if let doiUrl = item["doi"] as? String {
+        doi = doiUrl.replacingOccurrences(of: "https://doi.org/", with: "")
+    }
+    
+    // Determine type
+    let type = item["type"] as? String ?? "article"
+    let bibType = type.contains("book") ? "book" : "article"
+    
+    // Build citation key
+    let firstAuthor = authors.first?.components(separatedBy: " ").last ?? "Unknown"
+    let key = "\(firstAuthor)\(year)"
+    
+    // Build BibTeX
+    var bib = "@\(bibType){\(key),\n"
+    bib += "    author = {\(authors.joined(separator: " and "))},\n"
+    bib += "    title = {\(title)},\n"
+    bib += "    year = {\(year)}"
+    
+    if !journal.isEmpty { bib += ",\n    journal = {\(journal)}" }
+    if !doi.isEmpty { bib += ",\n    doi = {\(doi)}" }
+    
+    bib += "\n}"
+    
+    return bib
+}
+
+/// Query Semantic Scholar API as fallback
+private func querySemanticScholar(_ refText: String) async -> String? {
+    print("DEBUG - Trying Semantic Scholar...")
+    
+    var cleanedText = String(refText.prefix(150))
+    cleanedText = cleanedText
+        .replacingOccurrences(of: "—", with: "-")
+        .replacingOccurrences(of: "–", with: "-")
+    
+    let queryText = cleanedText
+        .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    
+    guard !queryText.isEmpty else { 
+        print("DEBUG - SemanticScholar: empty query")
+        return nil 
+    }
+    
+    let urlString = "https://api.semanticscholar.org/graph/v1/paper/search?query=\(queryText)&limit=5&fields=title,authors,year,venue,externalIds"
+    guard let url = URL(string: urlString) else { 
+        print("DEBUG - SemanticScholar: invalid URL")
+        return nil 
+    }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+    
+    do {
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let results = json["data"] as? [[String: Any]] {
+            print("DEBUG - SemanticScholar: got \(results.count) results")
+
+            
+            var refYear: String? = nil
+            if let yearMatch = refText.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression) {
+                refYear = String(refText[yearMatch])
+            }
+            
+            var refAuthor: String? = nil
+            if let firstWord = refText.components(separatedBy: CharacterSet.alphanumerics.inverted).first,
+               firstWord.count >= 3, firstWord.first?.isUppercase == true {
+                refAuthor = firstWord.lowercased()
+            }
+            
+            for item in results {
+                let resultYear = item["year"] as? Int
+                var resultAuthor: String? = nil
+                if let authors = item["authors"] as? [[String: Any]],
+                   let first = authors.first,
+                   let name = first["name"] as? String {
+                    resultAuthor = name.components(separatedBy: " ").last?.lowercased()
+                }
+                
+                var yearMatches = (refYear == nil)
+                if let ry = refYear, let resY = resultYear {
+                    yearMatches = (ry == String(resY))
+                }
+                
+                var authorMatches = false
+                if let ra = refAuthor, let resA = resultAuthor {
+                    authorMatches = (ra == resA || resA.hasPrefix(ra) || ra.hasPrefix(resA))
+                }
+                
+                if yearMatches && authorMatches {
+                    return buildBibTeXFromSemanticScholar(item)
+                }
+            }
+        }
+    } catch {
+        print("DEBUG - SemanticScholar error: \(error)")
+    }
+    return nil
+}
+
+/// Build BibTeX from Semantic Scholar JSON
+private func buildBibTeXFromSemanticScholar(_ item: [String: Any]) -> String? {
+    let title = item["title"] as? String ?? ""
+    guard !title.isEmpty else { return nil }
+    
+    let year = item["year"] as? Int ?? 0
+    let venue = item["venue"] as? String ?? ""
+    
+    var authors: [String] = []
+    if let authorList = item["authors"] as? [[String: Any]] {
+        for author in authorList {
+            if let name = author["name"] as? String { authors.append(name) }
+        }
+    }
+    
+    var doi = ""
+    if let externalIds = item["externalIds"] as? [String: Any],
+       let doiValue = externalIds["DOI"] as? String { doi = doiValue }
+    
+    let firstAuthor = authors.first?.components(separatedBy: " ").last ?? "Unknown"
+    let key = "\(firstAuthor)\(year)"
+    
+    var bib = "@article{\(key),\n"
+    bib += "    author = {\(authors.joined(separator: " and "))},\n"
+    bib += "    title = {\(title)},\n"
+    bib += "    year = {\(year)}"
+    if !venue.isEmpty { bib += ",\n    journal = {\(venue)}" }
+    if !doi.isEmpty { bib += ",\n    doi = {\(doi)}" }
+    bib += "\n}"
+    return bib
+}
+
+/// Build clean BibTeX from CrossRef JSON response
+
+private func buildBibTeXFromJSON(_ item: [String: Any]) -> String? {
+    // Extract title (clean, no MathML)
+    var title = ""
+    if let titles = item["title"] as? [String], let firstTitle = titles.first {
+        // Strip any HTML/XML tags
+        title = firstTitle.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+    }
+    
+    // Extract authors
+    var authors: [String] = []
+    if let authorList = item["author"] as? [[String: Any]] {
+        for author in authorList {
+            let family = author["family"] as? String ?? ""
+            let given = author["given"] as? String ?? ""
+            if !family.isEmpty {
+                authors.append("\(given) \(family)".trimmingCharacters(in: .whitespaces))
+            }
+        }
+    }
+    
+    // Extract year
+    var year = ""
+    if let published = item["published"] as? [String: Any],
+       let dateParts = published["date-parts"] as? [[Int]],
+       let firstDate = dateParts.first,
+       let firstYear = firstDate.first {
+        year = String(firstYear)
+    } else if let issued = item["issued"] as? [String: Any],
+              let dateParts = issued["date-parts"] as? [[Int]],
+              let firstDate = dateParts.first,
+              let firstYear = firstDate.first {
+        year = String(firstYear)
+    }
+    
+    // Extract journal
+    var journal = ""
+    if let containerTitle = item["container-title"] as? [String], let first = containerTitle.first {
+        journal = first
+    }
+    
+    // Extract other fields
+    let doi = item["DOI"] as? String ?? ""
+    let volume = item["volume"] as? String ?? ""
+    let issue = item["issue"] as? String ?? ""
+    let page = item["page"] as? String ?? ""
+    
+    // Determine entry type
+    let type = item["type"] as? String ?? "article"
+    let bibType = type.contains("book") ? "book" : "article"
+    
+    // Build citation key
+    let firstAuthor = authors.first?.components(separatedBy: " ").last ?? "Unknown"
+    let key = "\(firstAuthor)\(year)"
+    
+    // Build BibTeX
+    var bib = "@\(bibType){\(key),\n"
+    bib += "    author = {\(authors.joined(separator: " and "))},\n"
+    bib += "    title = {\(title)},\n"
+    bib += "    year = {\(year)}"
+    
+    if !journal.isEmpty { bib += ",\n    journal = {\(journal)}" }
+    if !volume.isEmpty { bib += ",\n    volume = {\(volume)}" }
+    if !issue.isEmpty { bib += ",\n    number = {\(issue)}" }
+    if !page.isEmpty { bib += ",\n    pages = {\(page)}" }
+    if !doi.isEmpty { bib += ",\n    doi = {\(doi)}" }
+    
+    bib += "\n}"
+    
+    return bib
+}
+
+/// Parse reference text to extract metadata
+private func parseReferenceText(_ text: String) -> (authors: String, title: String, journal: String?, year: String?)? {
+    // Remove numbering
+    var cleaned = text.replacingOccurrences(of: #"^\[\d+\]|\d+\."#, with: "", options: .regularExpression)
+        .trimmingCharacters(in: .whitespaces)
+    
+    // Extract year using regex
+    var year: String? = nil
+    if let yearMatch = cleaned.range(of: #"\((\d{4})\)|\b(19|20)\d{2}\b"#, options: .regularExpression) {
+        year = String(cleaned[yearMatch]).filter { $0.isNumber }
+    }
+    
+    // Use Apple NaturalLanguage framework for entity recognition
+    let tagger = NLTagger(tagSchemes: [.nameType])
+    tagger.string = cleaned
+    
+    var personNames: [String] = []
+    var organizations: [String] = []
+    
+    // Extract named entities
+    tagger.enumerateTags(in: cleaned.startIndex..<cleaned.endIndex, unit: .word, scheme: .nameType) { tag, range in
+        if let tag = tag {
+            let entity = String(cleaned[range])
+            switch tag {
+            case .personalName:
+                personNames.append(entity)
+            case .organizationName:
+                organizations.append(entity)
+            default:
+                break
+            }
+        }
+        return true
+    }
+    
+    // Build authors from detected person names
+    var authors = personNames.prefix(6).joined(separator: " ")
+    
+    // Fallback to traditional parsing if NL didn't find names
+    if authors.isEmpty {
+        let parts = cleaned.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespaces) }
+        if parts.count >= 1 {
+            authors = parts[0]
+        }
+    }
+    
+    // Extract title - usually in quotes or after author section
+    var title = ""
+    if let quoteMatch = cleaned.range(of: #""[^"]+""#, options: .regularExpression) {
+        title = String(cleaned[quoteMatch]).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+    } else {
+        // Fall back to period-based splitting
+        let parts = cleaned.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespaces) }
+        if parts.count > 1 {
+            title = parts[1]
+        }
+    }
+    
+    // Journal might be in organizations or third part
+    var journal: String? = organizations.first
+    if journal == nil {
+        let parts = cleaned.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespaces) }
+        if parts.count > 2 {
+            journal = parts[2]
+        }
+    }
+    
+    guard !authors.isEmpty || !title.isEmpty else { return nil }
+    
+    return (authors: authors, title: title, journal: journal, year: year)
+}
+
+/// Query CrossRef API using metadata
+private func queryWithBibTeXFromMetadata(_ metadata: (authors: String, title: String, journal: String?, year: String?)) async -> String? {
+    // Build query using bibliographic query for best results
+    var queryParts: [String] = []
+    
+    // Add author (first author surname is most useful)
+    if !metadata.authors.isEmpty {
+        let firstAuthor = metadata.authors.components(separatedBy: " ").first ?? metadata.authors
+        queryParts.append(firstAuthor)
+    }
+    
+    // Add title keywords (first 5 significant words)
+    if !metadata.title.isEmpty {
+        let titleWords = metadata.title.components(separatedBy: " ")
+            .filter { $0.count > 3 }
+            .prefix(5)
+            .joined(separator: " ")
+        queryParts.append(titleWords)
+    }
+    
+    // Add year
+    if let year = metadata.year {
+        queryParts.append(year)
+    }
+    
+    // Add journal if available
+    if let journal = metadata.journal, !journal.isEmpty {
+        queryParts.append(journal.prefix(20).description)
+    }
+    
+    let query = queryParts.joined(separator: " ")
+        .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    
+    guard !query.isEmpty else { return nil }
+    
+    let urlString = "https://api.crossref.org/works?query.bibliographic=\(query)&rows=1"
+    guard let url = URL(string: urlString) else { return nil }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+    
+    do {
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? [String: Any],
+           let items = message["items"] as? [[String: Any]],
+           let first = items.first,
+           let doi = first["DOI"] as? String {
+            return await fetchBibTeXFromCrossRef(doi: doi)
+        }
+    } catch {
+        print("DEBUG - CrossRef query error: \(error)")
+    }
+    
+    return nil
+}
+
+/// Construct basic BibTeX from parsed data
+private func constructBibTeXFromParsed(_ metadata: (authors: String, title: String, journal: String?, year: String?)) -> String {
+    let key = (metadata.authors.components(separatedBy: " ").first ?? "ref") + (metadata.year ?? "")
+    var bib = "@article{\(key),\n"
+    bib += "    author = {\(metadata.authors)},\n"
+    bib += "    title = {\(metadata.title)}"
+    if let year = metadata.year {
+        bib += ",\n    year = {\(year)}"
+    }
+    if let journal = metadata.journal {
+        bib += ",\n    journal = {\(journal)}"
+    }
+    bib += ",\n    note = {Extracted from references, verification failed}\n"
+    bib += "}"
+    return bib
+}
+
+/// Fetch BibTeX from CrossRef API for a given DOI
+private func fetchBibTeXFromCrossRef(doi: String) async -> String? {
+    let urlString = "https://api.crossref.org/works/\(doi)/transform/application/x-bibtex"
+    guard let url = URL(string: urlString) else { return nil }
+    
+    var request = URLRequest(url: url)
+    request.setValue("application/x-bibtex", forHTTPHeaderField: "Accept")
+    request.setValue("GhostPDF/1.0 (mailto:user@example.com)", forHTTPHeaderField: "User-Agent")
+    
+    do {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            print("DEBUG - CrossRef API returned error for DOI: \(doi)")
+            return nil
+        }
+        
+        if let bibtex = String(data: data, encoding: .utf8) {
+            return bibtex.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    } catch {
+        print("DEBUG - Network error fetching DOI \(doi): \(error)")
+    }
+    
+    return nil
 }
 
