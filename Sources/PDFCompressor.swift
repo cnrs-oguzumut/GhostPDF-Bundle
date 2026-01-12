@@ -480,9 +480,8 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
             }
 
             // Replace title if it's suspicious and we have a good online title
-            // ALWAYS replace title when we have CrossRef data to ensure accuracy
-            if let onlineTitle = metadata.title {
-                let titlePattern = #"title = \{[^}]+\}"#  // Fixed: was looking for double braces
+            if titleIsSuspicious, let onlineTitle = metadata.title {
+                let titlePattern = #"title = \{[^}]+\}"#
                 if enhancedBib.range(of: titlePattern, options: .regularExpression) != nil {
                     enhancedBib = enhancedBib.replacingOccurrences(
                         of: titlePattern,

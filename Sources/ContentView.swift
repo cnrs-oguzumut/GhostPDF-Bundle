@@ -4498,7 +4498,8 @@ struct ResearcherTabView: View {
                 // We'll use PDFCompressor.shared.extractBibTeX
                 
                 // Pass allowOnlineLookup setting to enable CrossRef fallback if DOI is found
-                if let bib = await extractBibTeX(url: file.url, allowOnline: self.allowOnlineLookup) {
+                let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                if let bib = await extractBibTeX(url: file.url, allowOnline: self.allowOnlineLookup, options: opts) {
                     if let entry = parseBibTeXToMetadata(bib) {
                         let newName = generateFilename(author: entry.author, year: entry.year, title: entry.title, journal: entry.journal)
                         // Only add if different
