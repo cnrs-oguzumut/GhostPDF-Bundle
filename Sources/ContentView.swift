@@ -1,5 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import Network
+
+// MARK: - Network Monitor
+class NetworkMonitor: ObservableObject {
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "NetworkMonitor")
+    @Published var isConnected = true
+
+    init() {
+        monitor.pathUpdateHandler = { path in
+            DispatchQueue.main.async {
+                self.isConnected = path.status == .satisfied
+            }
+        }
+        monitor.start(queue: queue)
+    }
+}
 
 enum ExtractMode: String, CaseIterable, Identifiable {
     case renderPage = "Render Page as Image"
@@ -101,6 +118,17 @@ struct ContentView: View {
     @State private var summaryText: String = ""
     @State private var isSummarizing: Bool = false
     
+    // Researcher Tab State (separate from AI tab)
+    // Researcher Tab State (separate from AI tab)
+    @SceneStorage("researcherOutputText") private var researcherOutputText: String = ""
+    @State private var isResearcherProcessing: Bool = false
+    @State private var previousTab: Int = 0
+    
+    // BibTeX Options
+    @AppStorage("shortenAuthors") private var shortenAuthors = false
+    @AppStorage("abbreviateJournals") private var abbreviateJournals = false
+    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
+    
     struct PDFFile: Identifiable, Equatable {
         let id = UUID()
         let url: URL
@@ -177,26 +205,54 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
                 .onChange(of: selectedTab) { newValue in
+                    // User Request: Auto-clear files when leaving Researcher tab
+                    if previousTab == 6 && newValue != 6 {
+                        selectedFiles.removeAll()
+                        statusMessage = ""
+                        totalProgress = 0
+                        currentFileIndex = 0
+                    }
+                    previousTab = newValue
+                    
                     if (newValue == 1 || newValue == 2 || newValue == 3 || newValue == 4 || newValue == 5) && !appState.ghostscriptAvailable {
                         selectedTab = 0
                         showingProModeRequirementAlert = true
                     }
                 }
                 
-                if selectedTab == 0 {
+                // Use ZStack with opacity to keep Researcher tab alive (preserves dropped bib content)
+                ZStack {
                     BasicTabView(selectedPreset: $selectedPreset)
-                } else if selectedTab == 2 {
-                    toolsTabContent
-                } else if selectedTab == 3 {
-                    securityTabContent
-                } else if selectedTab == 4 {
-                    advancedTabContent
-                } else if selectedTab == 5 {
-                    aiTabContent
-                } else if selectedTab == 6 {
-                    researcherTabContent
-                } else {
+                        .opacity(selectedTab == 0 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 0)
+                    
                     proTabContent
+                        .opacity(selectedTab == 1 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 1)
+                    
+                    toolsTabContent
+                        .opacity(selectedTab == 2 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 2)
+                    
+                    securityTabContent
+                        .opacity(selectedTab == 3 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 3)
+                    
+                    advancedTabContent
+                        .opacity(selectedTab == 4 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 4)
+                    
+                    aiTabContent
+                        .opacity(selectedTab == 5 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 5)
+                    
+                    ResearcherTabView(
+                        selectedFiles: $selectedFiles,
+                        outputText: $researcherOutputText,
+                        isProcessing: $isResearcherProcessing
+                    )
+                    .opacity(selectedTab == 6 ? 1 : 0)
+                    .allowsHitTesting(selectedTab == 6)
                 }
                 
                 if isCompressing {
@@ -218,8 +274,8 @@ struct ContentView: View {
                         .padding(.horizontal, 24)
                 }
 
-                // Hide the compress button on AI tab
-                if selectedTab != 5 {
+                // Hide the compress button on AI tab and Researcher tab
+                if selectedTab != 5 && selectedTab != 6 {
                     Button(action: performAction) {
                         Text(actionButtonTitle)
                             .font(.system(size: 16, weight: .semibold))
@@ -306,14 +362,7 @@ struct ContentView: View {
         )
     }
     
-    @ViewBuilder
-    private var researcherTabContent: some View {
-        ResearcherTabView(
-            selectedFiles: $selectedFiles,
-            outputText: $summaryText,
-            isProcessing: $isSummarizing
-        )
-    }
+
     
     @ViewBuilder
     private var toolsTabContent: some View {
@@ -1785,7 +1834,7 @@ struct ContentView: View {
     @ViewBuilder
     private var fileListArea: some View {
         if selectedFiles.isEmpty {
-            DropZoneView(selectedFiles: $selectedFiles)
+            DropZoneView(selectedFiles: $selectedFiles, selectedTab: selectedTab)
                 .padding(.horizontal, 24)
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                     handleDrop(providers: providers)
@@ -1844,7 +1893,8 @@ struct ContentView: View {
                                 comparisonOutputURL = out
                                 showingComparison = true
                             }
-                        }
+                        },
+                        selectedTab: selectedTab
                     )
                     .frame(height: 200)
                 }
@@ -1871,16 +1921,59 @@ struct ContentView: View {
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        // Check if any provider has a .bib file
+        let hasBibWithURL = providers.contains { provider in
+            provider.canLoadObject(ofClass: URL.self)
+        }
+        
+        if hasBibWithURL {
+             // We can't synchronously check extension easily for all, so we'll load generic URL
+             // If we find a .bib, we delegate.
+             // Strategy: process all. If .bib found, handle via handleBibFileDrop. If PDF found, add to list.
+        }
+
         for provider in providers {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, _ in
                 guard let data = data as? Data,
-                      let url = URL(dataRepresentation: data, relativeTo: nil),
-                      url.pathExtension.lowercased() == "pdf" else { return }
+                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                 
-                DispatchQueue.main.async {
-                    if !selectedFiles.contains(where: { $0.url == url }) {
-                        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-                        selectedFiles.append(ContentView.PDFFile(url: url, originalSize: size))
+                let ext = url.pathExtension.lowercased()
+                
+                if ext == "pdf" {
+                    DispatchQueue.main.async {
+                        if !selectedFiles.contains(where: { $0.url == url }) {
+                            let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+                            selectedFiles.append(ContentView.PDFFile(url: url, originalSize: size))
+                        }
+                    }
+                } else if ext == "bib" {
+                    // Delegate to Bib handler. Since handleBibFileDrop takes providers, we might act on URL directly?
+                    // handleBibFileDrop uses loadObject(ofClass: URL.self).
+                    // We can just call the logic directly here or reuse handleBibFileDrop logic.
+                    // Reusing handleBibFileDrop from here is tricky as it takes providers.
+                    // Easier to just read the content here.
+                    
+                    if let content = try? String(contentsOf: url, encoding: .utf8) {
+                        DispatchQueue.main.async {
+                            // If there are multiple bibs, this overrides? Append if non-empty?
+                            // For simplicity, mimic single drop behavior or append cleanly.
+                            // We should probably invoke the centralized cleanup/merge logic.
+                            // But since handleBibFileDrop keeps lock etc, let's just use MainActor update.
+                            
+                            // Better: Delegate to handleBibFileDrop by passing providers?
+                            // No, we are already inside a provider loop.
+                            
+                            // We'll append to existing text or replace?
+                            // ResearcherTabView logic: "Drop .bib files".
+                            // If we drop multiple, we usually want to merge.
+                            
+                            let cleanContent = cleanBibTeX(content)
+                            if self.researcherOutputText.isEmpty {
+                                self.researcherOutputText = cleanContent
+                            } else {
+                                self.researcherOutputText += "\n\n" + cleanContent
+                            }
+                        }
                     }
                 }
             }
@@ -1897,21 +1990,31 @@ struct FileListView: View {
     @Binding var files: [ContentView.PDFFile]
     let onDelete: (IndexSet) -> Void
     let onCompare: (ContentView.PDFFile) -> Void
+    var selectedTab: Int = 0
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
-    
+
+    // Filter files based on selected tab
+    var filteredIndices: [Int] {
+        // Researcher tab (6) shows both PDF and .bib files
+        // All other tabs show only PDFs
+        if selectedTab == 6 {
+            return Array(files.indices)
+        } else {
+            return files.indices.filter { files[$0].url.pathExtension.lowercased() == "pdf" }
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                ForEach($files) { $file in
+                ForEach(filteredIndices, id: \.self) { index in
                     HStack {
-                        FileRowView(file: $file, onCompare: onCompare)
+                        FileRowView(file: $files[index], onCompare: onCompare)
                         
                         Spacer()
-                        
+
                         Button(action: {
-                            if let idx = files.firstIndex(where: { $0.id == file.id }) {
-                                onDelete(IndexSet(integer: idx))
-                            }
+                            onDelete(IndexSet(integer: index))
                         }) {
                             Image(systemName: "trash")
                                 .foregroundColor(.red.opacity(0.7))
@@ -1953,35 +2056,70 @@ struct WarningBanner: View {
 struct DropZoneView: View {
     @Binding var selectedFiles: [ContentView.PDFFile]
     @State private var isTargeted = false
+    var selectedTab: Int = 0
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
-    
+
+    var dropText: String {
+        if selectedTab == 6 {
+            return "Drop PDFs or .bib files here\nor click to browse"
+        } else {
+            return "Drop PDFs here\nor click to browse"
+        }
+    }
+
+    var textColor: Color {
+        isDarkMode ? Color(red: 148/255, green: 163/255, blue: 184/255) : Color(red: 100/255, green: 116/255, blue: 139/255)
+    }
+
+    var backgroundColor: Color {
+        if isTargeted {
+            return Color.blue.opacity(0.1)
+        } else if isDarkMode {
+            return Color(red: 30/255, green: 41/255, blue: 59/255).opacity(0.6)
+        } else {
+            return Color.white.opacity(0.6)
+        }
+    }
+
+    var strokeColor: Color {
+        if isTargeted {
+            return Color.blue
+        } else if isDarkMode {
+            return Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.4)
+        } else {
+            return Color(red: 203/255, green: 213/255, blue: 225/255)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.on.doc")
                 .font(.system(size: 48))
-                .foregroundColor(isDarkMode ? Color(red: 148/255, green: 163/255, blue: 184/255) : Color(red: 100/255, green: 116/255, blue: 139/255))
-            
-            Text("Drop PDFs here\nor click to browse")
+                .foregroundColor(textColor)
+
+            Text(dropText)
                 .font(.system(size: 14))
-                .foregroundColor(isDarkMode ? Color(red: 148/255, green: 163/255, blue: 184/255) : Color(red: 100/255, green: 116/255, blue: 139/255))
+                .foregroundColor(textColor)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 180)
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(isTargeted ? Color.blue.opacity(0.1) : (isDarkMode ? Color(red: 30/255, green: 41/255, blue: 59/255).opacity(0.6) : Color.white.opacity(0.6)))
+                .fill(backgroundColor)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(
-                            isTargeted ? Color.blue : (isDarkMode ? Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.4) : Color(red: 203/255, green: 213/255, blue: 225/255)),            
-                            style: StrokeStyle(lineWidth: 2, dash: [8])
-                        )
+                        .stroke(strokeColor, style: StrokeStyle(lineWidth: 2, dash: [8]))
                 )
         )
         .onTapGesture {
             let panel = NSOpenPanel()
-            panel.allowedContentTypes = [.pdf]
+            // Allow .bib files in Researcher tab (6)
+            if selectedTab == 6 {
+                panel.allowedContentTypes = [.pdf, UTType(filenameExtension: "bib") ?? .plainText]
+            } else {
+                panel.allowedContentTypes = [.pdf]
+            }
             panel.allowsMultipleSelection = true
             if panel.runModal() == .OK {
                 for url in panel.urls {
@@ -1996,8 +2134,17 @@ struct DropZoneView: View {
             for provider in providers {
                 provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { data, _ in
                     guard let data = data as? Data,
-                          let url = URL(dataRepresentation: data, relativeTo: nil),
-                          url.pathExtension.lowercased() == "pdf" else { return }
+                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+
+                    let ext = url.pathExtension.lowercased()
+
+                    // Only allow .bib files in Researcher tab (6)
+                    if ext == "bib" && selectedTab != 6 {
+                        return
+                    }
+
+                    guard ext == "pdf" || ext == "bib" else { return }
+
                     DispatchQueue.main.async {
                          if !selectedFiles.contains(where: { $0.url == url }) {
                             let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
@@ -3380,7 +3527,9 @@ struct AITabView: View {
     @Binding var summaryText: String
     @Binding var isSummarizing: Bool
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
-    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = false
+    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
+    @AppStorage("shortenAuthors") private var shortenAuthors = false
+    @AppStorage("abbreviateJournals") private var abbreviateJournals = false
 
     @State private var activeAction: AIAction? = nil
 
@@ -3495,6 +3644,14 @@ struct AITabView: View {
                                 .font(.caption)
 
                                 if summaryText.contains("@article") {
+                                    Button(action: reformatSummary) {
+                                        Label("Reformat", systemImage: "textformat")
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.purple)
+                                    .font(.caption)
+                                    .help("Apply current formatting options to extracted entries")
+
                                     Button(action: exportBibFile) {
                                         Label("Save .bib", systemImage: "square.and.arrow.down")
                                     }
@@ -3503,6 +3660,32 @@ struct AITabView: View {
                                 }
                             }
                             Spacer()
+                        }
+
+                        // Formatting options - show only when BibTeX is displayed
+                        if summaryText.contains("@article") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Formatting Options")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 16) {
+                                    Toggle("Shorten Authors", isOn: $shortenAuthors)
+                                        .font(.caption)
+
+                                    Toggle("Abbreviate Journals", isOn: $abbreviateJournals)
+                                        .font(.caption)
+                                }
+
+                                Text("Toggle options above and click 'Reformat' to apply changes")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                            .cornerRadius(6)
                         }
 
                         ZStack(alignment: .topTrailing) {
@@ -3553,11 +3736,16 @@ struct AITabView: View {
         }
     }
 
+    private func reformatSummary() {
+        let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+        summaryText = reformatBibTeX(summaryText, options: opts)
+    }
+
     private func exportBibFile() {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "bib")!]
         panel.nameFieldStringValue = "citations.bib"
-        
+
         if panel.runModal() == .OK, let url = panel.url {
             try? summaryText.write(to: url, atomically: true, encoding: .utf8)
         }
@@ -3572,8 +3760,9 @@ struct AITabView: View {
 
         Task {
             var combinedBib = ""
+            let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
             for file in checkedFiles {
-                if let bib = await extractBibTeX(url: file.url, allowOnline: allowOnlineLookup) {
+                if let bib = await extractBibTeX(url: file.url, allowOnline: allowOnlineLookup, options: opts) {
                     combinedBib += bib + "\n\n"
                 }
             }
@@ -3615,7 +3804,8 @@ struct AITabView: View {
         summaryText = "Scanning for references and extracting DOIs..."
         
         Task {
-            let references = await extractReferences(url: file.url)
+            let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+            let references = await extractReferences(url: file.url, options: opts)
             
             await MainActor.run {
                 if references.isEmpty {
@@ -3636,14 +3826,24 @@ struct ResearcherTabView: View {
     @Binding var outputText: String
     @Binding var isProcessing: Bool
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
-    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = false
-    
+    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
+    @AppStorage("shortenAuthors") private var shortenAuthors = false  // NEW
+    @AppStorage("abbreviateJournals") private var abbreviateJournals = false // NEW
+    @StateObject private var networkMonitor = NetworkMonitor()
+
     @State private var activeAction: ResearcherAction? = nil
-    
+    @State private var selectedCitationStyle: CitationStyle = .apa
+    @State private var showCitationPreview: Bool = false
+    @State private var extractionTask: Task<Void, Never>? = nil
+    @State private var isCancelled: Bool = false
+
     enum ResearcherAction {
         case bibtex
         case references
+        case lookup
     }
+    
+    @State private var doiInput: String = ""
     
     var body: some View {
         ScrollView {
@@ -3695,6 +3895,8 @@ struct ResearcherTabView: View {
                             }
                             .toggleStyle(.switch)
                             
+                            Divider()
+
                             Button(action: {
                                 activeAction = .bibtex
                                 generateBibEntry()
@@ -3729,31 +3931,71 @@ struct ResearcherTabView: View {
                                 Spacer()
                             }
                             
-                            Text("Extract all references from bibliography section using DOI lookup, CrossRef & Semantic Scholar.")
-                                .font(.caption)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Extract all references from bibliography section using DOI lookup, CrossRef & Semantic Scholar.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "wifi")
+                                        .font(.caption2)
+                                    Text("Requires active internet connection for CrossRef metadata.")
+                                        .font(.caption2)
+                                }
                                 .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 4)
+                            }
                             
                             Divider()
                             
-                            Button(action: {
-                                activeAction = .references
-                                extractReferencesAction()
-                            }) {
+                            if !networkMonitor.isConnected {
                                 HStack {
-                                    if isProcessing && activeAction == .references {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Image(systemName: "books.vertical")
-                                    }
-                                    Text(isProcessing && activeAction == .references ? "Extracting..." : "Extract References")
+                                    Image(systemName: "wifi.slash")
+                                    Text("Internet Connection Required")
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding(.vertical, 4)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(activeAction == .references ? .orange : .accentColor)
-                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing)
+                            
+                            HStack(spacing: 12) {
+                                Button(action: {
+                                    activeAction = .references
+                                    extractReferencesAction()
+                                }) {
+                                    HStack {
+                                        if isProcessing && activeAction == .references {
+                                            ProgressView().controlSize(.small)
+                                        } else {
+                                            Image(systemName: "books.vertical")
+                                        }
+                                        Text(isProcessing && activeAction == .references ? "Extracting..." : "Extract References")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(activeAction == .references ? .orange : .accentColor)
+                                .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing || !networkMonitor.isConnected)
+                                
+                                // Stop button - shown only while extracting references
+                                if isProcessing && activeAction == .references {
+                                    Button(action: {
+                                        isCancelled = true
+                                        extractionTask?.cancel()
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "stop.circle.fill")
+                                            Text("Stop")
+                                        }
+                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, 16)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.red)
+                                }
+                            }
                         }
                         .padding(12)
                     }
@@ -3772,7 +4014,23 @@ struct ResearcherTabView: View {
                                 .foregroundColor(.red)
                                 .font(.caption)
                                 
-                                if outputText.contains("@article") || outputText.contains("@book") {
+                                if outputText.contains("@article") || outputText.contains("@book") || outputText.contains("@inproceedings") {
+                                    Button(action: cleanOutput) {
+                                        Label("Clean", systemImage: "wand.and.rays")
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.green)
+                                    .font(.caption)
+                                    .help("Remove unnecessary fields (abstract, language, etc.), clean braces in names, and remove duplicates")
+                                    
+                                    Button(action: reformatOutput) {
+                                        Label("Reformat", systemImage: "textformat")
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.orange)
+                                    .font(.caption)
+                                    .help("Apply current formatting options to extracted entries")
+
                                     Button(action: exportBibFile) {
                                         Label("Save .bib", systemImage: "square.and.arrow.down")
                                     }
@@ -3782,7 +4040,33 @@ struct ResearcherTabView: View {
                             }
                             Spacer()
                         }
-                        
+
+                        // Formatting options - show only when BibTeX is displayed
+                        if outputText.contains("@article") || outputText.contains("@book") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Formatting Options")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 16) {
+                                    Toggle("Shorten Authors", isOn: $shortenAuthors)
+                                        .font(.caption)
+
+                                    Toggle("Abbreviate Journals", isOn: $abbreviateJournals)
+                                        .font(.caption)
+                                }
+
+                                Text("Toggle options above and click 'Reformat' to apply changes")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                            .cornerRadius(6)
+                        }
+
                         ZStack(alignment: .topTrailing) {
                             if outputText.isEmpty {
                                 VStack(spacing: 12) {
@@ -3796,13 +4080,14 @@ struct ResearcherTabView: View {
                                 .frame(maxWidth: .infinity, minHeight: 280)
                             } else {
                                 ScrollView {
-                                    Text(outputText)
+                                    Text(getPreviewText())
                                         .textSelection(.enabled)
                                         .font(.system(.body, design: .monospaced))
                                         .lineSpacing(4)
                                         .padding()
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
+                                .id(outputText.hashValue) // Force refresh when content changes
                                 .frame(minHeight: 280)
                                 
                                 Button(action: {
@@ -3820,6 +4105,52 @@ struct ResearcherTabView: View {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Color(NSColor.textBackgroundColor).opacity(0.5))
                         )
+
+                        // Citation Preview Section
+                        if !outputText.isEmpty && outputText.contains("@") {
+                            Divider()
+                                .padding(.vertical, 8)
+
+                            VStack(spacing: 12) {
+                                HStack {
+                                    Text("Citation Preview")
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.secondary)
+
+                                    Spacer()
+
+                                    Picker("Style", selection: $selectedCitationStyle) {
+                                        ForEach(CitationStyle.allCases) { style in
+                                            Text(style.rawValue).tag(style)
+                                        }
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .frame(width: 200)
+
+                                    Button(action: { showCitationPreview.toggle() }) {
+                                        Image(systemName: showCitationPreview ? "eye.slash" : "eye")
+                                            .font(.system(size: 14))
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+
+                                if showCitationPreview {
+                                    ScrollView {
+                                        Text(CitationFormatter.formatMultiple(outputText, style: selectedCitationStyle))
+                                            .textSelection(.enabled)
+                                            .font(.system(.body))
+                                            .lineSpacing(6)
+                                            .padding()
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .frame(minHeight: 150, maxHeight: 300)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color(NSColor.controlBackgroundColor))
+                                    )
+                                }
+                            }
+                        }
                     }
                     .padding(8)
                 }
@@ -3827,47 +4158,186 @@ struct ResearcherTabView: View {
             }
             .padding(.vertical, 20)
         }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            handleBibFileDrop(providers: providers)
+        }
     }
-    
-    private func generateBibEntry() {
-        let checkedFiles = selectedFiles.filter { $0.isChecked }
-        guard let file = checkedFiles.first else { return }
-        
-        isProcessing = true
-        outputText = "Extracting BibTeX metadata..."
+
+    private func handleBibFileDrop(providers: [NSItemProvider]) -> Bool {
+        // Filter providers first
+        let validProviders = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        guard !validProviders.isEmpty else { return false }
         
         Task {
-            let bibEntry = await extractBibTeX(url: file.url, allowOnline: allowOnlineLookup)
+            var contents: [String] = []
+            
+            for provider in validProviders {
+                if let url = await loadURL(from: provider) {
+                    if url.pathExtension.lowercased() == "bib",
+                       let content = try? String(contentsOf: url, encoding: .utf8) {
+                        contents.append(content)
+                    }
+                }
+            }
             
             await MainActor.run {
-                outputText = bibEntry ?? "Unable to extract BibTeX."
-                isProcessing = false
+                if !contents.isEmpty {
+                    // Join all contents and clean to remove duplicates
+                    let combined = contents.joined(separator: "\n\n")
+                    outputText = cleanBibTeX(combined)
+                }
+            }
+        }
+        
+        return true
+    }
+    
+    private func loadURL(from provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url)
             }
         }
     }
-    
-    private func extractReferencesAction() {
+
+    private func generateBibEntry() {
         let checkedFiles = selectedFiles.filter { $0.isChecked }
-        guard let file = checkedFiles.first else { return }
-        
+        guard !checkedFiles.isEmpty else { return }
+
         isProcessing = true
-        outputText = "Scanning for references and extracting DOIs..."
+        outputText = "Processing \(checkedFiles.count) file(s)..."
+        
+        let filesToProcess = checkedFiles
+        let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+        let isOnlineAllowed = allowOnlineLookup // Capture value to avoid self capture in Task
         
         Task {
-            let references = await extractReferences(url: file.url)
+            var extractedEntries: [String] = []
+            
+            await withTaskGroup(of: String?.self) { group in
+                for file in filesToProcess {
+                    group.addTask {
+                        // If it's a .bib file, read content directly
+                        if file.url.pathExtension.lowercased() == "bib" {
+                            return try? String(contentsOf: file.url, encoding: .utf8)
+                        } else {
+                            // Extract from PDF
+                            return await extractBibTeX(url: file.url, allowOnline: isOnlineAllowed, options: opts)
+                        }
+                    }
+                }
+                
+                for await result in group {
+                    if let content = result, !content.isEmpty {
+                        extractedEntries.append(content)
+                    }
+                }
+            }
             
             await MainActor.run {
-                if references.isEmpty {
-                    outputText = "No references found or unable to extract DOIs."
+                if extractedEntries.isEmpty {
+                    outputText = "Unable to extract BibTeX from selected files."
                 } else {
-                    let header = "// Extracted \(references.count) reference(s)\n// Verified entries fetched from CrossRef/Semantic Scholar\n\n"
-                    outputText = header + references.joined(separator: "\n\n")
+                    let combined = extractedEntries.joined(separator: "\n\n")
+                    // Automatically clean/format the combined result to remove duplicates from the merge
+                    outputText = cleanBibTeX(combined)
                 }
                 isProcessing = false
             }
         }
     }
     
+    private func extractReferencesAction() {
+        // ... (rest of the function) checkedFiles check needs to be updated too for single file constraint if needed, but keeping it for now
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard let file = checkedFiles.first else { return } // This one still takes first file for now as per previous logic
+        
+        isProcessing = true
+        isCancelled = false
+        outputText = "Scanning for references and extracting DOIs..."
+
+        extractionTask = Task {
+            let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+            let references = await extractReferences(url: file.url, options: opts, isCancelledCheck: { [self] in
+                return isCancelled
+            }) { current, total in
+                // Update progress on main thread
+                Task { @MainActor in
+                    outputText = "Processing reference \(current) of \(total)...\n\nThis uses concurrent requests for faster extraction."
+                }
+            }
+
+            await MainActor.run {
+                if isCancelled {
+                    if references.count > 1 {
+                        // Show partial results if any were found before cancellation
+                        let header = "// Extraction stopped - \(references.count - 1) reference(s) found before cancellation\n\n"
+                        outputText = header + references.filter { !$0.contains("cancelled") }.joined(separator: "\n\n")
+                    } else {
+                        outputText = "// Extraction cancelled by user"
+                    }
+                } else if references.isEmpty {
+                    outputText = "No references found or unable to extract DOIs."
+                } else {
+                    let header = "// Extracted \(references.count) reference(s)\n// Verified entries fetched from CrossRef/Semantic Scholar\n\n"
+                    outputText = header + references.joined(separator: "\n\n")
+                }
+                isProcessing = false
+                extractionTask = nil
+            }
+        }
+    }
+
+    private func lookupDOIAction() {
+        guard !doiInput.isEmpty else { return }
+        
+        activeAction = .lookup
+        isProcessing = true
+        outputText = "Fetching BibTeX for DOI: \(doiInput)..."
+        
+        Task {
+            let cleanDOI = doiInput.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                .replacingOccurrences(of: "https://doi.org/", with: "")
+                .replacingOccurrences(of: "doi:", with: "")
+            
+            if let bib = await fetchBibTeXFromCrossRef(doi: cleanDOI) {
+                await MainActor.run {
+                    // Check if we need formatting
+                    var finalBib = bib
+                    if shortenAuthors || abbreviateJournals {
+                       let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                       finalBib = reformatBibTeX(bib, options: opts)
+                    }
+                    
+                    outputText = finalBib
+                    isProcessing = false
+                    activeAction = nil
+                }
+            } else {
+                await MainActor.run {
+                    outputText = "Error: Could not fetch BibTeX for DOI '\(cleanDOI)'"
+                    isProcessing = false
+                    activeAction = nil
+                }
+            }
+        }
+    }
+
+    private func reformatOutput() {
+        guard !outputText.isEmpty else { return }
+        let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+        do {
+            outputText = reformatBibTeX(outputText, options: opts)
+        } catch {
+            print("Error reformatting: \(error)")
+        }
+    }
+
+    private func cleanOutput() {
+        guard !outputText.isEmpty else { return }
+        outputText = cleanBibTeX(outputText)
+    }
+
     private func exportBibFile() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "references.bib"
@@ -3876,5 +4346,20 @@ struct ResearcherTabView: View {
         if panel.runModal() == .OK, let url = panel.url {
             try? outputText.write(to: url, atomically: true, encoding: .utf8)
         }
+    }
+    
+    private func getPreviewText() -> String {
+        // If not containing BibTeX-like entries, show full text (e.g. error messages)
+        guard outputText.contains("@article") || outputText.contains("@book") || outputText.contains("@inproceedings") else {
+            return outputText
+        }
+        
+        let entries = outputText.components(separatedBy: "\n\n")
+        if entries.count > 5 {
+            let preview = entries.prefix(5).joined(separator: "\n\n")
+            let remaining = entries.count - 5
+            return preview + "\n\n// ... and \(remaining) more references.\n// Use 'Save .bib' to view all."
+        }
+        return outputText
     }
 }
