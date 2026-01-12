@@ -129,6 +129,7 @@ struct ContentView: View {
     @AppStorage("shortenAuthors") private var shortenAuthors = false
     @AppStorage("abbreviateJournals") private var abbreviateJournals = false
     @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
+    @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false
     
     struct PDFFile: Identifiable, Equatable {
         let id = UUID()
@@ -3738,7 +3739,7 @@ struct AITabView: View {
     }
 
     private func reformatSummary() {
-        let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
         summaryText = reformatBibTeX(summaryText, options: opts)
     }
 
@@ -3761,7 +3762,7 @@ struct AITabView: View {
 
         Task {
             var combinedBib = ""
-            let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                    let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
             for file in checkedFiles {
                 if let bib = await extractBibTeX(url: file.url, allowOnline: allowOnlineLookup, options: opts) {
                     combinedBib += bib + "\n\n"
@@ -3805,7 +3806,7 @@ struct AITabView: View {
         summaryText = "Scanning for references and extracting DOIs..."
         
         Task {
-            let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                    let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
             let references = await extractReferences(url: file.url, options: opts)
             
             await MainActor.run {
@@ -4165,6 +4166,10 @@ struct ResearcherTabView: View {
 
                                     Toggle("Abbreviate Journals", isOn: $abbreviateJournals)
                                         .font(.caption)
+
+                                    Toggle("LaTeX Escaping", isOn: $useLaTeXEscaping)
+                                        .font(.caption)
+                                        .help("Escape special characters like 'Moës' as 'Mo{\\\"e}s' for traditional BibTeX compatibility")
                                 }
 
                                 Text("Toggle options above and click 'Reformat' to apply changes")
@@ -4341,7 +4346,7 @@ struct ResearcherTabView: View {
         outputText = "Processing \(checkedFiles.count) file(s)..."
         
         let filesToProcess = checkedFiles
-        let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
         let isOnlineAllowed = allowOnlineLookup // Capture value to avoid self capture in Task
         
         Task {
@@ -4389,7 +4394,7 @@ struct ResearcherTabView: View {
         outputText = "Processing \(checkedFiles.count) PDF(s) for reference extraction..."
 
         extractionTask = Task {
-            let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                    let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
             var allReferences: [String] = []
             var currentFile = 0
 
@@ -4500,7 +4505,7 @@ struct ResearcherTabView: View {
                     // Check if we need formatting
                     var finalBib = bib
                     if shortenAuthors || abbreviateJournals {
-                       let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                               let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
                        finalBib = reformatBibTeX(bib, options: opts)
                     }
                     
@@ -4520,7 +4525,7 @@ struct ResearcherTabView: View {
 
     private func reformatOutput() {
         guard !outputText.isEmpty else { return }
-        let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
         do {
             outputText = reformatBibTeX(outputText, options: opts)
         } catch {
@@ -4560,7 +4565,7 @@ struct ResearcherTabView: View {
                 // We'll use PDFCompressor.shared.extractBibTeX
                 
                 // Pass allowOnlineLookup setting to enable CrossRef fallback if DOI is found
-                let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals)
+                        let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
                 if let bib = await extractBibTeX(url: file.url, allowOnline: self.allowOnlineLookup, options: opts) {
                     if let entry = parseBibTeXToMetadata(bib) {
                         let newName = generateFilename(author: entry.author, year: entry.year, title: entry.title, journal: entry.journal)

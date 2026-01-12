@@ -433,6 +433,7 @@ func fetchMetadataFromDOI(_ doi: String) async -> CrossRefMetadata? {
 struct BibTeXFormatOptions {
     var shortenAuthors: Bool = false
     var abbreviateJournals: Bool = false
+    var useLaTeXEscaping: Bool = false
 }
 
 /// Extract BibTeX metadata from PDF with optional online lookup
@@ -868,10 +869,10 @@ private func extractBibTeXOffline(url: URL, doc: PDFDocument, extractedDOI: Stri
     let citeKey = "\(cleanAuthorKey)\(year)\(cleanTitleKey)".lowercased()
     
     var bib = "@article{\(citeKey),\n"
-    bib += "    author = {\(latexEscaped(finalAuthor))},\n"
-    bib += "    title = {\(latexEscaped(finalTitle))},\n"
+    bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(finalAuthor) : finalAuthor)},\n"
+    bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(finalTitle) : finalTitle)},\n"
     bib += "    year = {\(year)},\n"
-    bib += "    journal = {\(latexEscaped(finalJournal))}"
+    bib += "    journal = {\(options.useLaTeXEscaping ? latexEscaped(finalJournal) : finalJournal)}"
     
     if !volume.isEmpty { bib += ",\n    volume = {\(volume)}" }
     if !number.isEmpty { bib += ",\n    number = {\(number)}" }
@@ -2984,6 +2985,34 @@ private func latexEscaped(_ text: String) -> String {
     return result
 }
 
+/// Helper to unescape LaTeX character sequences back to UTF-8
+private func latexUnescaped(_ text: String) -> String {
+    let mapping: [String: String] = [
+        "{\\`a}": "à", "{\\'a}": "á", "{\\^a}": "â", "{\\~a}": "ã", "{\\\"a}": "ä", "{\\r{a}}": "å", "{\\ae}": "æ",
+        "{\\c{c}}": "ç",
+        "{\\`e}": "è", "{\\'e}": "é", "{\\^e}": "ê", "{\\\"e}": "ë",
+        "{\\`i}": "ì", "{\\'i}": "í", "{\\^i}": "î", "{\\\"i}": "ï",
+        "{\\~n}": "ñ",
+        "{\\`o}": "ò", "{\\'o}": "ó", "{\\^o}": "ô", "{\\~o}": "õ", "{\\\"o}": "ö", "{\\o}": "ø",
+        "{\\`u}": "ù", "{\\'u}": "ú", "{\\^u}": "û", "{\\\"u}": "ü",
+        "{\\'y}": "ý", "{\\\"y}": "ÿ",
+        "{\\`A}": "À", "{\\'A}": "Á", "{\\^A}": "Â", "{\\~A}": "Ã", "{\\\"A}": "Ä", "{\\r{A}}": "Å", "{\\AE}": "Æ",
+        "{\\c{C}}": "Ç",
+        "{\\`E}": "È", "{\\'E}": "É", "{\\^E}": "Ê", "{\\\"E}": "Ë",
+        "{\\`I}": "Ì", "{\\'I}": "Í", "{\\^I}": "Î", "{\\\"I}": "Ï",
+        "{\\~N}": "Ñ",
+        "{\\`O}": "Ò", "{\\'O}": "Ó", "{\\^O}": "Ô", "{\\~O}": "Õ", "{\\\"O}": "Ö", "{\\O}": "Ø",
+        "{\\`U}": "Ù", "{\\'U}": "Ú", "{\\^U}": "Û", "{\\\"U}": "Ü",
+        "{\\'Y}": "Ý"
+    ]
+    
+    var result = text
+    for (escaped, unescaped) in mapping {
+        result = result.replacingOccurrences(of: escaped, with: unescaped)
+    }
+    return result
+}
+
 private func buildBibTeXFromJSON(_ json: [String: Any], options: BibTeXFormatOptions = BibTeXFormatOptions()) -> String? {
     guard let message = json["message"] as? [String: Any] else { return nil }
     
@@ -3034,8 +3063,8 @@ private func buildBibTeXFromJSON(_ json: [String: Any], options: BibTeXFormatOpt
     let key = "\(cleanKey)\(year)"
     
     var bib = "@article{\(key),\n"
-    bib += "    author = {\(latexEscaped(authors))},\n"
-    bib += "    title = {\(latexEscaped(title))},\n"
+    bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(authors) : authors)},\n"
+    bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(title) : title)},\n"
     bib += "    year = {\(year)}"
     
     if let j = journal, !j.isEmpty {
@@ -3345,7 +3374,7 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
                     }
                 }
 
-                // Apply replacements in reverse order to maintain indices (like JavaScript version)
+                // Apply replacements in reverse order to maintain indices
                 var result = modifiedEntry
                 for replacement in replacements.reversed() {
                     let nsResult = result as NSString
@@ -3355,6 +3384,45 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
                 }
 
                 modifiedEntry = result
+            }
+        }
+        
+        // Handle LaTeX escaping/unescaping for author and title
+        let fieldsToProcess = ["author", "title", "journal", "booktitle"]
+        for field in fieldsToProcess {
+            let fieldPattern = #"(?i)"# + field + #"\s*=\s*\{"#
+            if let regex = try? NSRegularExpression(pattern: fieldPattern, options: []) {
+                let nsString = modifiedEntry as NSString
+                let matches = regex.matches(in: modifiedEntry, options: [], range: NSRange(location: 0, length: nsString.length))
+                
+                var replacements: [(range: NSRange, text: String)] = []
+                
+                for match in matches {
+                    let contentStart = match.range.location + match.range.length
+                    var depth = 1
+                    var pos = contentStart
+                    while pos < nsString.length && depth > 0 {
+                        let char = nsString.character(at: pos)
+                        if char == 123 { depth += 1 }
+                        else if char == 125 { depth -= 1 }
+                        if depth == 0 { break }
+                        pos += 1
+                    }
+                    
+                    if depth == 0 {
+                        let content = nsString.substring(with: NSRange(location: contentStart, length: pos - contentStart))
+                        let newValue = options.useLaTeXEscaping ? latexEscaped(latexUnescaped(content)) : latexUnescaped(content)
+                        if content != newValue {
+                            replacements.append((range: NSRange(location: contentStart, length: pos - contentStart), text: newValue))
+                        }
+                    }
+                }
+                
+                // Apply replacements in reverse
+                for r in replacements.reversed() {
+                    let nsResult = modifiedEntry as NSString
+                    modifiedEntry = nsResult.replacingCharacters(in: r.range, with: r.text)
+                }
             }
         }
 
