@@ -3841,9 +3841,19 @@ struct ResearcherTabView: View {
         case bibtex
         case references
         case lookup
+        case rename // NEW
     }
     
     @State private var doiInput: String = ""
+    @State private var showRenamePreview: Bool = false // NEW
+    @State private var renameCandidates: [RenameCandidate] = [] // NEW
+    
+    struct RenameCandidate: Identifiable {
+        let id = UUID()
+        let originalURL: URL
+        let newName: String
+        var isSelected: Bool = true
+    }
     
     var body: some View {
         ScrollView {
@@ -3996,6 +4006,45 @@ struct ResearcherTabView: View {
                                     .tint(.red)
                                 }
                             }
+                        }
+                        .padding(12)
+                    }
+                    
+                    // Renaming Assistant Card
+                    GroupBox {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "pencil.and.outline")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.purple)
+                                Text("PDF Renaming Assistant")
+                                    .font(.headline)
+                                Spacer()
+                            }
+                            
+                            Text("Automatically rename selected PDFs using 'Author - Year - Title' format.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Button(action: {
+                                activeAction = .rename
+                                analyzeAndRenameAction()
+                            }) {
+                                HStack {
+                                    if isProcessing && activeAction == .rename {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "pencil")
+                                    }
+                                    Text(isProcessing && activeAction == .rename ? "Analyzing..." : "Analyze & Rename")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(activeAction == .rename ? .purple : .accentColor)
+                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing)
                         }
                         .padding(12)
                     }
@@ -4158,8 +4207,14 @@ struct ResearcherTabView: View {
             }
             .padding(.vertical, 20)
         }
+
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleBibFileDrop(providers: providers)
+        }
+        .sheet(isPresented: $showRenamePreview) {
+            RenamePreviewView(candidates: $renameCandidates) {
+                performRenameAction()
+            }
         }
     }
 
@@ -4348,6 +4403,129 @@ struct ResearcherTabView: View {
         }
     }
     
+    private func analyzeAndRenameAction() {
+        let files = selectedFiles.filter { $0.isChecked }
+        guard !files.isEmpty else { return }
+        
+        isProcessing = true
+        renameCandidates = []
+        
+        Task {
+            var candidates: [RenameCandidate] = []
+            
+            for file in files {
+                // Reuse extractReferences logic but just one at a time for safety
+                // We use PDFCompressor's fetchBibTeXFromCrossRef if we have DOI, or local extraction.
+                // For renaming, local extraction is safer/faster if metadata exists.
+                // We'll use PDFCompressor.shared.extractBibTeX
+                
+                // Pass allowOnlineLookup setting to enable CrossRef fallback if DOI is found
+                if let bib = await extractBibTeX(url: file.url, allowOnline: self.allowOnlineLookup) {
+                    if let entry = parseBibTeXToMetadata(bib) {
+                        let newName = generateFilename(author: entry.author, year: entry.year, title: entry.title, journal: entry.journal)
+                        // Only add if different
+                        if newName != file.url.lastPathComponent {
+                             candidates.append(RenameCandidate(originalURL: file.url, newName: newName))
+                        }
+                    }
+                }
+            }
+            
+            await MainActor.run {
+                self.renameCandidates = candidates
+                self.isProcessing = false
+                if !candidates.isEmpty {
+                    self.showRenamePreview = true
+                } else {
+                    self.outputText = "Could not extract sufficient metadata (Author/Year/Title) from the selected files to suggest names."
+                }
+            }
+        }
+    }
+    
+    private func parseBibTeXToMetadata(_ bib: String) -> (author: String, year: String, title: String, journal: String?)? {
+        // Simple regex parsing using helper
+        func extract(_ key: String) -> String? {
+            let pattern = "\(key)\\s*=\\s*\\{([^\\}]+)\\}"
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                  let match = regex.firstMatch(in: bib, range: NSRange(bib.startIndex..., in: bib)),
+                  let range = Range(match.range(at: 1), in: bib) else { return nil }
+            return String(bib[range])
+        }
+        
+        guard let author = extract("author"),
+              let year = extract("year"),
+              let title = extract("title") else { return nil }
+        
+        let journal = extract("journal") ?? extract("booktitle")
+              
+        return (author, year, title, journal)
+    }
+    
+    private func generateFilename(author: String, year: String, title: String, journal: String?) -> String {
+        // Requested Format: Name_Journal_Year
+        // Fallbacks: Name_Year_Title, Name_Title
+        
+        // Get surname of first author
+        let firstAuthor = author.components(separatedBy: " and ").first ?? author
+        let surname = firstAuthor.components(separatedBy: ", ").first ?? firstAuthor.components(separatedBy: " ").last ?? firstAuthor
+        
+        // Clean strings
+        let cleanSurname = surname.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanYear = year.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        let illegalChars = CharacterSet(charactersIn: ":/\\?%*|\"<>")
+        
+        // Strategy 1: Name_Journal_Year
+        if let journal = journal, !journal.isEmpty {
+             let cleanJournal = journal.prefix(40).components(separatedBy: illegalChars).joined(separator: "").trimmingCharacters(in: .whitespacesAndNewlines)
+             // Use underscore as requested
+             return "\(cleanSurname)_\(cleanJournal)_\(cleanYear).pdf"
+        }
+        
+        // Strategy 2: Name_Year_Title (fallback if no journal)
+        let safeTitle = title.components(separatedBy: illegalChars).joined(separator: " ")
+                             .trimmingCharacters(in: .whitespacesAndNewlines)
+                             .prefix(50)
+        
+        if !cleanYear.isEmpty {
+             return "\(cleanSurname)_\(cleanYear)_\(safeTitle).pdf"
+        }
+        
+        // Strategy 3: Name_Title (fallback if no year)
+        return "\(cleanSurname)_\(safeTitle).pdf"
+    }
+    
+    private func performRenameAction() {
+        for candidate in renameCandidates where candidate.isSelected {
+            let fileManager = FileManager.default
+            let folder = candidate.originalURL.deletingLastPathComponent()
+            let destination = folder.appendingPathComponent(candidate.newName)
+            
+            // Basic collision handling
+            var finalDestination = destination
+            var counter = 1
+            while fileManager.fileExists(atPath: finalDestination.path) {
+                let name = destination.deletingPathExtension().lastPathComponent
+                let ext = destination.pathExtension
+                finalDestination = folder.appendingPathComponent("\(name) (\(counter)).\(ext)")
+                counter += 1
+            }
+            
+            do {
+                try fileManager.moveItem(at: candidate.originalURL, to: finalDestination)
+                // Update selected file URL in list
+                if let index = selectedFiles.firstIndex(where: { $0.url == candidate.originalURL }) {
+                    let size = (try? fileManager.attributesOfItem(atPath: finalDestination.path)[.size] as? Int64) ?? 0
+                    selectedFiles[index] = ContentView.PDFFile(url: finalDestination, originalSize: size, isChecked: true)
+                }
+            } catch {
+                print("Error renaming: \(error)")
+            }
+        }
+        outputText = "Renamed \(renameCandidates.filter{$0.isSelected}.count) file(s)."
+    }
+    
     private func getPreviewText() -> String {
         // If not containing BibTeX-like entries, show full text (e.g. error messages)
         guard outputText.contains("@article") || outputText.contains("@book") || outputText.contains("@inproceedings") else {
@@ -4361,5 +4539,64 @@ struct ResearcherTabView: View {
             return preview + "\n\n// ... and \(remaining) more references.\n// Use 'Save .bib' to view all."
         }
         return outputText
+    }
+}
+
+struct RenamePreviewView: View {
+    @Binding var candidates: [ResearcherTabView.RenameCandidate]
+    var onConfirm: () -> Void
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Preview Renaming Changes")
+                .font(.headline)
+                .padding(.top)
+                
+            List($candidates) { $candidate in
+                HStack {
+                    Toggle("", isOn: $candidate.isSelected)
+                        .labelsHidden()
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(candidate.originalURL.lastPathComponent)
+                            .font(.caption)
+                            .strikethrough()
+                            .foregroundColor(.red)
+                        
+                        HStack {
+                            Image(systemName: "arrow.right")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text(candidate.newName)
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .foregroundColor(.green)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .frame(minHeight: 200, maxHeight: 400)
+            .border(Color.secondary.opacity(0.2))
+            
+            HStack(spacing: 20) {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                
+                Button("Rename Selected (\(candidates.filter{$0.isSelected}.count))") {
+                    onConfirm()
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(candidates.filter{$0.isSelected}.isEmpty)
+            }
+            .padding(.bottom)
+        }
+        .padding()
+        .frame(minWidth: 500)
     }
 }
