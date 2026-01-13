@@ -8,7 +8,7 @@ set -e
 # Configuration
 APP_NAME="GhostPDF+"
 BUNDLE_ID="com.ghostpdf.app"
-VERSION="2.0.1"
+VERSION="2.5"
 BUILD_NUMBER="1"
 DIST_DIR="dist"
 
@@ -175,7 +175,7 @@ codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 echo ""
 echo "Creating DMG..."
 DMG_NAME="$APP_NAME-$VERSION-Bundled"
-hdiutil create -volname "$APP_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DIST_DIR/$DMG_NAME.dmg"
+hdiutil create -volname "${APP_NAME} Bundled ${VERSION}" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DIST_DIR/$DMG_NAME.dmg"
 
 echo ""
 echo "Notarizing..."

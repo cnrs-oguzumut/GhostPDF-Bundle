@@ -4364,9 +4364,15 @@ struct ResearcherTabView: View {
             
             await MainActor.run {
                 if !contents.isEmpty {
-                    // Join all contents and clean to remove duplicates
-                    let combined = contents.joined(separator: "\n\n")
-                    outputText = cleanBibTeX(combined)
+                    let newContent = contents.joined(separator: "\n\n")
+                    // Append to existing output if it looks like BibTeX
+                    let existing = outputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !existing.isEmpty && (existing.contains("@article") || existing.contains("@book") || existing.contains("@inproceedings") || existing.contains("@misc")) {
+                        // Append and clean the combined result to ensure consistency and deduplication
+                        outputText = cleanBibTeX(existing + "\n\n" + newContent)
+                    } else {
+                        outputText = cleanBibTeX(newContent)
+                    }
                 }
             }
         }
@@ -4435,59 +4441,169 @@ struct ResearcherTabView: View {
 
         isProcessing = true
         isCancelled = false
-        outputText = "Processing \(checkedFiles.count) PDF(s) for reference extraction..."
+        // Capture existing content to preserve
+        let preservedOutput = outputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasPreservedContent = !preservedOutput.isEmpty && (preservedOutput.contains("@article") || preservedOutput.contains("@book") || preservedOutput.contains("@inproceedings") || preservedOutput.contains("@misc"))
+
+        isProcessing = true
+        isCancelled = false
+        
+        // Initial status message
+        if hasPreservedContent {
+            outputText = preservedOutput + "\n\n// Starting extraction from \(checkedFiles.count) PDF(s)..."
+        } else {
+            outputText = "Processing \(checkedFiles.count) PDF(s) for reference extraction..."
+        }
 
         extractionTask = Task {
                     let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
             var allReferences: [String] = []
             var currentFile = 0
+            
+            let pdfCount = checkedFiles.filter { $0.url.pathExtension.lowercased() == "pdf" }.count
+            let bibCount = checkedFiles.filter { $0.url.pathExtension.lowercased() == "bib" }.count
 
-            // Process each PDF sequentially to maintain progress tracking
+            // Process each file sequentially
             for file in checkedFiles {
                 currentFile += 1
+                let isBib = file.url.pathExtension.lowercased() == "bib"
+                let fileType = isBib ? "BibTeX" : "PDF"
 
                 await MainActor.run {
-                    outputText = "Processing PDF \(currentFile) of \(checkedFiles.count): \(file.url.lastPathComponent)..."
-                }
-
-                if isCancelled { break }
-
-                let references = await extractReferences(url: file.url, options: opts, isCancelledCheck: { [self] in
-                    return isCancelled
-                }) { current, total in
-                    // Update progress on main thread
-                    Task { @MainActor in
-                        outputText = "PDF \(currentFile)/\(checkedFiles.count) - Reference \(current)/\(total): \(file.url.lastPathComponent)"
+                    let statusMsg = "Processing \(fileType) \(currentFile) of \(checkedFiles.count): \(file.url.lastPathComponent)..."
+                    if hasPreservedContent {
+                        outputText = preservedOutput + "\n\n// " + statusMsg
+                    } else {
+                        outputText = statusMsg
                     }
                 }
 
-                allReferences.append(contentsOf: references)
+                if isCancelled { break }
+                
+                if isBib {
+                    // Handle .bib file
+                    if let content = try? String(contentsOf: file.url, encoding: .utf8) {
+                        // Simple splitting of entries to allow deduplication
+                        // We assume standard formatting where entries start with @
+                        // Use regex to split safely? Or simple split.
+                        // Let's try splitting by "\n@" and repairing.
+                        // A more robust way: use the same regex we use for deduplication detection?
+                        // For now, let's treat the whole file content as a source of entries.
+                        // We can use a regex to find all matches of @type{...}
+                        // Or just append the whole block if deduplicateReferences can handle it?
+                        // deduplicateReferences expects [String] where each string is ONE entry.
+                        
+                        // Heuristic split:
+                        let rawEntries = content.components(separatedBy: "@")
+                        for entry in rawEntries {
+                            let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmed.isEmpty { continue }
+                            // Re-prepends @ if it looks like an entry type
+                            if let firstWord = trimmed.components(separatedBy: "{").first,
+                               ["article", "book", "misc", "inproceedings", "phdthesis", "techreport"].contains(firstWord.lowercased()) {
+                                allReferences.append("@" + trimmed)
+                            }
+                        }
+                    }
+                } else {
+                    // Handle PDF
+                    let references = await extractReferences(url: file.url, options: opts, isCancelledCheck: { [self] in
+                        return isCancelled
+                    }) { current, total in
+                        // Update progress on main thread
+                        Task { @MainActor in
+                            let progressMsg = "\(fileType) \(currentFile)/\(checkedFiles.count) - Reference \(current)/\(total): \(file.url.lastPathComponent)"
+                            if hasPreservedContent {
+                                outputText = preservedOutput + "\n\n// " + progressMsg
+                            } else {
+                                outputText = progressMsg
+                            }
+                        }
+                    }
+                    allReferences.append(contentsOf: references)
+                }
             }
 
             await MainActor.run {
                 if isCancelled {
-                    if allReferences.count > 1 {
-                        let deduplicated = deduplicateReferences(allReferences)
-                        let duplicateCount = allReferences.count - deduplicated.count
-                        let header = "// Extraction stopped - \(deduplicated.count) unique reference(s) found (\(duplicateCount) duplicates removed)\n\n"
-                        outputText = header + deduplicated.joined(separator: "\n\n")
+                    if hasPreservedContent {
+                        // Restore preserved content and append cancellation note
+                        outputText = preservedOutput + "\n\n// Extraction cancelled by user"
                     } else {
-                        outputText = "// Extraction cancelled by user"
+                        if allReferences.count > 1 {
+                            let deduplicated = deduplicateReferences(allReferences)
+                            let duplicateCount = allReferences.count - deduplicated.count
+                            let header = "// Extraction stopped - \(deduplicated.count) unique reference(s) found (\(duplicateCount) duplicates removed)\n\n"
+                            outputText = header + deduplicated.joined(separator: "\n\n")
+                        } else {
+                            outputText = "// Extraction cancelled by user"
+                        }
                     }
                 } else if allReferences.isEmpty {
-                    outputText = "No references found in \(checkedFiles.count) PDF(s)."
-                } else {
-                    // Deduplicate merged references
-                    let deduplicated = deduplicateReferences(allReferences)
-                    let duplicateCount = allReferences.count - deduplicated.count
-
-                    var header = "// Extracted \(deduplicated.count) unique reference(s) from \(checkedFiles.count) PDF(s)"
-                    if duplicateCount > 0 {
-                        header += " (\(duplicateCount) duplicates removed)"
+                    if hasPreservedContent {
+                         outputText = preservedOutput + "\n\n// No new references found in \(checkedFiles.count) file(s)."
+                    } else {
+                         outputText = "No references found in \(checkedFiles.count) file(s)."
                     }
-                    header += "\n// Verified entries fetched from CrossRef/Semantic Scholar\n\n"
+                } else {
+                    // Start with what we had (if any)
+                    var combinedReferences: [String] = []
+                    
+                    if hasPreservedContent {
+                         // Parse existing references to include in deduplication not trivial as they are a string block.
+                         // But we can just join strings and let cleanBibTeX/deduplicate handle it if we passed parsed entries?
+                         // deduplicateReferences takes [String].
+                         // existingOutput is a String.
+                         // Simple approach: Strings concatenation, then cleanBibTeX (which seems to do some cleanup/formatting).
+                         // BUT deduplicateReferences is local helper.
+                         // Let's rely on cleanBibTeX for global cleanup if possible, or manually split preservedOutput?
+                         
+                         // Better: append new raw references to preserved output string, then run a deduplication pass?
+                         // Re-using deduplicateReferences requires splitting the string.
+                         
+                         // Let's assume we want to append and then clean.
+                         // But existing entries in `preservedOutput` might not be in the same format as `allReferences`.
+                         
+                         // Setup for merging:
+                         let separator = "\n\n"
+                         // var finalOutput = preservedOutput + separator + allReferences.joined(separator: separator) // Unused
+                         
+                         // Try to split preserved output more robustly?
+                         // For now, rely on \n\n. If that fails, existingEntries might be one huge block.
+                         // But we must NOT drop it. deduplicateReferences usage now protects us.
+                         let existingEntries = preservedOutput.components(separatedBy: "\n\n").filter { $0.contains("@") }
+                         combinedReferences = existingEntries + allReferences
+                         // Note: cleanBibTeX might not deduplicate based on semantic equality, but it formats.
+                         // Let's try to deduplicate strictly newly added vs existing?
+                         // Or just append.
+                         
+                         // User said "merge them".
+                         // cleanBibTeX (in PDFCompressor) doesn't seem to deduplicate deeply.
+                         // But `deduplicateReferences` (local private func) does logic.
+                         
+                         // Let's try to run deduplicateReferences on EVERYTHING.
+                         // We need to split `preservedOutput` back into entries.
+                    } else {
+                        combinedReferences = allReferences
+                    }
 
-                    outputText = header + deduplicated.joined(separator: "\n\n")
+                    // Deduplicate merged references
+                    let deduplicated = deduplicateReferences(combinedReferences)
+                    let duplicateCount = combinedReferences.count - deduplicated.count
+
+                    var header = ""
+                    if !hasPreservedContent {
+                         header = "// Extracted \(deduplicated.count) unique reference(s) from \(pdfCount) PDF(s) and \(bibCount) Bib file(s)"
+                         if duplicateCount > 0 {
+                             header += " (\(duplicateCount) duplicates removed)"
+                         }
+                         header += "\n// Verified entries fetched from CrossRef/Semantic Scholar + Local Parse\n\n"
+                    } else {
+                        // Brief header for new batch
+                        header = "// Added \(allReferences.count) new reference(s) from \(checkedFiles.count) file(s). Total: \(deduplicated.count).\n\n"
+                    }
+
+                    outputText = (hasPreservedContent ? "" : header) + deduplicated.joined(separator: "\n\n")
                 }
                 isProcessing = false
                 extractionTask = nil
@@ -4523,7 +4639,12 @@ struct ResearcherTabView: View {
             }
 
             // Only add if not seen before
-            if !seen.contains(dedupeKey) && !dedupeKey.isEmpty {
+            // If key is empty (parsing failed), use the content itself as key to avoid dropping it!
+            if dedupeKey.isEmpty {
+                 dedupeKey = "UNKNOWN-" + String(ref.hashValue)
+            }
+
+            if !seen.contains(dedupeKey) {
                 seen.insert(dedupeKey)
                 unique.append(ref)
             }
@@ -4770,17 +4891,6 @@ struct ResearcherTabView: View {
     }
 
     private func getPreviewText() -> String {
-        // If not containing BibTeX-like entries, show full text (e.g. error messages)
-        guard outputText.contains("@article") || outputText.contains("@book") || outputText.contains("@inproceedings") else {
-            return outputText
-        }
-        
-        let entries = outputText.components(separatedBy: "\n\n")
-        if entries.count > 5 {
-            let preview = entries.prefix(5).joined(separator: "\n\n")
-            let remaining = entries.count - 5
-            return preview + "\n\n// ... and \(remaining) more references.\n// Use 'Save .bib' to view all."
-        }
         return outputText
     }
 }

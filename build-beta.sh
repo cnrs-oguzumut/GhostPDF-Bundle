@@ -30,19 +30,19 @@ if [ -f "../icon.icns" ]; then
     cp "../icon.icns" "$RESOURCES_DIR/AppIcon.icns"
 fi
 
-# Prepare and copy Ghostscript bundle
-echo ""
-echo "Preparing Ghostscript bundle..."
-./prepare-ghostscript.sh
-
-echo "Copying Ghostscript bundle to app..."
-if [ -d "ghostscript-bundle" ]; then
-    cp -R "ghostscript-bundle" "$RESOURCES_DIR/ghostscript"
-    echo "Ghostscript bundle copied to $RESOURCES_DIR/ghostscript"
-else
-    echo "Error: ghostscript-bundle directory not found!"
-    exit 1
-fi
+# Ghostscript bundling removed for Lite Beta
+# echo ""
+# echo "Preparing Ghostscript bundle..."
+# ./prepare-ghostscript.sh
+# 
+# echo "Copying Ghostscript bundle to app..."
+# if [ -d "ghostscript-bundle" ]; then
+#     cp -R "ghostscript-bundle" "$RESOURCES_DIR/ghostscript"
+#     echo "Ghostscript bundle copied to $RESOURCES_DIR/ghostscript"
+# else
+#     echo "Error: ghostscript-bundle directory not found!"
+#     exit 1
+# fi
 
 # Create Info.plist
 cat > "$CONTENTS_DIR/Info.plist" << 'EOF'

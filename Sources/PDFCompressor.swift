@@ -440,16 +440,12 @@ struct BibTeXFormatOptions {
 func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOptions = BibTeXFormatOptions()) async -> String? {
     guard let doc = PDFDocument(url: url) else { return nil }
 
-    // First, try to extract DOI and arXiv ID (works offline)
-    var doi = ""
+    // First, try to extract DOI using unified logic
+    var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
     var arxivID = ""
+    
+    // Extract arXiv ID locally
     if let firstPage = doc.page(at: 0), let text = firstPage.string {
-        // Extract DOI
-        let doiPattern = #"10\.\d{4,9}/[-._;()/:A-Z0-9]+"#
-        if let range = text.range(of: doiPattern, options: [.regularExpression, .caseInsensitive]) {
-            doi = String(text[range])
-        }
-        
         // Extract arXiv ID (formats: arXiv:YYMM.NNNNN or just YYMM.NNNNN)
         let arxivPattern = #"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)"#
         if let range = text.range(of: arxivPattern, options: [.regularExpression, .caseInsensitive]) {
@@ -641,6 +637,29 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
                 of: "Extracted from",
                 with: "Metadata enhanced via CrossRef API from"
             )
+        }
+    }
+
+    // Fallback chain when no DOI or CrossRef failed - try title-based searches
+    if allowOnline {
+        // Get title from PDF metadata
+        var searchTitle: String? = nil
+        if let attrs = doc.documentAttributes, let title = attrs[PDFDocumentAttribute.titleAttribute] as? String, !title.isEmpty {
+            searchTitle = title
+        }
+        
+        if let title = searchTitle {
+            // Try Semantic Scholar
+            print("DEBUG - extractBibTeX: Trying Semantic Scholar for title: '\(title)'")
+            if let ssBib = await querySemanticScholar(title, originalContext: nil, options: options) {
+                return ssBib
+            }
+            
+            // Try OpenLibrary (for books)
+            print("DEBUG - extractBibTeX: Trying OpenLibrary for title: '\(title)'")
+            if let olBib = await queryOpenLibrary(title, options: options) {
+                return olBib
+            }
         }
     }
 
@@ -2210,52 +2229,30 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
     var startCollecting = false
     var pagesCollected = 0
     
-    // 0. Try to find DOI and arXiv ID of the document itself first
-    var docDOI: String? = nil
+    // 0. Try to find DOI using sophisticated logic
+    var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
     var docArXivID: String? = nil
     
-    // Check Metadata Attributes first (Subject, Keywords)
-    if let attrs = doc.documentAttributes {
-        let candidates = [attrs[PDFDocumentAttribute.subjectAttribute] as? String, 
-                          attrs[PDFDocumentAttribute.keywordsAttribute] as? String]
-        
-        for candidate in candidates {
-            if let text = candidate, let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
-                 var doi = String(text[doiMatch])
-                 if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
-                 docDOI = doi
-                 break
-            }
-        }
-    }
-    
-    // If not found in metadata, scan first 3 pages for DOI and arXiv ID
-    if docDOI == nil || docArXivID == nil {
+    // 1. Try to find arXiv ID (scanning text)
+    if docArXivID == nil {
         for pageIndex in 0..<min(3, doc.pageCount) {
              if let page = doc.page(at: pageIndex), let text = page.string {
-                 // Try to find DOI
-                 if docDOI == nil, let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
-                     var doi = String(text[doiMatch])
-                     // Cleanup
-                     if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
-                     docDOI = doi
+                 let arxivPattern = #"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)"#
+                 if let arxivMatch = text.range(of: arxivPattern, options: [.regularExpression, .caseInsensitive]) {
+                     var arxivID = String(text[arxivMatch])
+                     arxivID = arxivID.replacingOccurrences(of: "arXiv:", with: "", options: .caseInsensitive)
+                         .trimmingCharacters(in: .whitespaces)
+                     docArXivID = arxivID
+                     break
                  }
-                 
-                 // Try to find arXiv ID
-                 if docArXivID == nil {
-                     let arxivPattern = #"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)"#
-                     if let arxivMatch = text.range(of: arxivPattern, options: [.regularExpression, .caseInsensitive]) {
-                         var arxivID = String(text[arxivMatch])
-                         arxivID = arxivID.replacingOccurrences(of: "arXiv:", with: "", options: .caseInsensitive)
-                             .trimmingCharacters(in: .whitespaces)
-                         docArXivID = arxivID
-                     }
-                 }
-                 
-                 if docDOI != nil && docArXivID != nil { break }
              }
         }
     }
+
+
+
+    // 0b. Fallback: Search online for DOI by Title if missing
+
 
     // New Strategy: Try online reference list fetching
     if allowOnline {
@@ -2274,6 +2271,7 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
              }
              print("DEBUG - Failed to fetch references from CrossRef (or list empty). Falling back to text parsing.")
         }
+
     }
 
 
@@ -3475,7 +3473,15 @@ private func queryWithBibTeXFromMetadata(_ metadata: (authors: String, title: St
                  }
              }
 
-            return await fetchBibTeXFromCrossRef(doi: doi)
+            // Try CrossRef first
+            if let bib = await fetchBibTeXFromCrossRef(doi: doi) {
+                return bib
+            } else {
+                print("DEBUG - CrossRef failed or returned corrupted data. Falling back to Semantic Scholar.")
+                // Fallback to Semantic Scholar using metadata
+                // Construct a query string from title
+                return await querySemanticScholar(metadata.title, originalContext: metadata.authors + " " + metadata.year.map { String($0) }.debugDescription)
+            }
         }
     } catch {
         print("DEBUG - CrossRef query error: \(error)")
@@ -3517,7 +3523,11 @@ private func constructBibTeXFromParsed(_ metadata: (authors: String, title: Stri
 
 /// Fetch BibTeX from CrossRef API for a given DOI
 func fetchBibTeXFromCrossRef(doi: String) async -> String? {
-    let urlString = "https://api.crossref.org/works/\(doi)/transform/application/x-bibtex"
+    // URL-encode the DOI - must encode parentheses which urlPathAllowed does NOT encode
+    var allowedChars = CharacterSet.urlPathAllowed
+    allowedChars.remove(charactersIn: "()")
+    guard let encodedDOI = doi.addingPercentEncoding(withAllowedCharacters: allowedChars) else { return nil }
+    let urlString = "https://api.crossref.org/works/\(encodedDOI)/transform/application/x-bibtex"
     guard let url = URL(string: urlString) else { return nil }
     
     var request = URLRequest(url: url)
@@ -3527,13 +3537,22 @@ func fetchBibTeXFromCrossRef(doi: String) async -> String? {
     do {
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            print("DEBUG - CrossRef API returned error for DOI: \(doi)")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("DEBUG - CrossRef: No HTTP response for DOI: \(doi)")
             return nil
         }
         
-        if let bibtex = String(data: data, encoding: .utf8) {
+        if httpResponse.statusCode != 200 {
+            print("DEBUG - CrossRef API error for DOI: \(doi) | Status: \(httpResponse.statusCode) | URL: \(urlString)")
+            return nil
+        }
+        
+        if var bibtex = String(data: data, encoding: .utf8) {
+            // Strip replacement characters instead of rejecting (common with CrossRef German umlauts)
+            if bibtex.contains("\u{FFFD}") {
+                print("DEBUG - CrossRef has corrupted characters. Stripping and keeping data.")
+                bibtex = bibtex.replacingOccurrences(of: "\u{FFFD}", with: "")
+            }
             return bibtex.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     } catch {
@@ -3808,74 +3827,134 @@ private func fetchReferenceListFromDOI(_ doi: String, options: BibTeXFormatOptio
            let references = message["reference"] as? [[String: Any]],
            !references.isEmpty {
             
-            var bibtexList: [String] = []
+            // Process in batches to avoid rate limiting (429)
+            let batchSize = 5
+            var results: [String] = []
             
-            for ref in references {
-                // Determine Entry Type and Key
-                let key = ref["key"] as? String ?? "ref\(UUID().uuidString.prefix(8))"
-                let doi = ref["DOI"] as? String
-                var type = "article"
+            for batchStart in stride(from: 0, to: references.count, by: batchSize) {
+                let batchEnd = min(batchStart + batchSize, references.count)
+                let batch = Array(references[batchStart..<batchEnd])
                 
-                // If it has no DOI but has series-title or volume without journal, might be a book/proc
-                if doi == nil && (ref["series-title"] != nil || ref["journal-title"] == nil) {
-                    type = "misc" 
+                // Process batch concurrently
+                let batchResults = await withTaskGroup(of: String?.self) { group in
+                    for ref in batch {
+                        group.addTask {
+                            // 1. Try to fetch full BibTeX from CrossRef if DOI is present
+                            if let refDOI = ref["DOI"] as? String {
+                                if let deepBib = await fetchBibTeXFromCrossRef(doi: refDOI) {
+                                    return deepBib
+                                }
+                                
+                                // 1b. Fallback: Try Semantic Scholar if CrossRef failed
+                                let ssQuery = ref["article-title"] as? String ?? ref["unstructured"] as? String ?? ""
+                                if !ssQuery.isEmpty {
+                                    if let ssBib = await querySemanticScholar(ssQuery, originalContext: nil, options: options) {
+                                        return ssBib
+                                    }
+                                }
+                            } else {
+                                // 1c. No DOI - try Semantic Scholar with title
+                                let title = ref["article-title"] as? String ?? ref["series-title"] as? String ?? ref["volume-title"] as? String ?? ""
+                                if !title.isEmpty {
+                                    print("DEBUG - No DOI for ref. Searching Semantic Scholar for: '\(title)'")
+                                    if let ssBib = await querySemanticScholar(title, originalContext: nil, options: options) {
+                                        print("DEBUG - Semantic Scholar found match for: '\(title)'")
+                                        return ssBib
+                                    } else {
+                                        print("DEBUG - Semantic Scholar found nothing. Trying OpenLibrary for: '\(title)'")
+                                        // 1d. Try OpenLibrary for books
+                                        if let olBib = await queryOpenLibrary(title, options: options) {
+                                            return olBib
+                                        }
+                                    }
+                                } else {
+                                    print("DEBUG - No DOI and no title found for ref: \(ref["key"] ?? "unknown")")
+                                }
+                            }
+                            
+                            // 2. Final Fallback: Parse sparse data
+                            return buildSparseBibTeX(ref, options: options)
+                        }
+                    }
+                    
+                    var batchItems: [String] = []
+                    for await result in group {
+                        if let bib = result { batchItems.append(bib) }
+                    }
+                    return batchItems
                 }
                 
-                var bib = "@\(type){\(key),\n"
+                results.append(contentsOf: batchResults)
                 
-                // Author
-                if let author = ref["author"] as? String {
-                     bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(author) : author)},\n"
-                } else if let author = ref["unstructured"] as? String {
-                    // Sometimes unstructured contains the whole citation
+                // Rate limit delay between batches (200ms)
+                if batchEnd < references.count {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
                 }
-                
-                // Title (often missing in reference list, usually only Journal Title is present)
-                if let artTitle = ref["article-title"] as? String {
-                    bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(artTitle) : artTitle)},\n"
-                } else if let seriesTitle = ref["series-title"] as? String {
-                     bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(seriesTitle) : seriesTitle)},\n"
-                }
-                
-                // Journal / Container
-                if let journal = ref["journal-title"] as? String {
-                    bib += "    journal = {\(options.useLaTeXEscaping ? latexEscaped(journal) : journal)},\n"
-                } else if let volumeTitle = ref["volume-title"] as? String {
-                    // For books?
-                    bib += "    booktitle = {\(options.useLaTeXEscaping ? latexEscaped(volumeTitle) : volumeTitle)},\n"
-                }
-                
-                // Year
-                if let year = ref["year"] as? String {
-                    bib += "    year = {\(year)},\n"
-                }
-                
-                // Volume/Pages
-                if let vol = ref["volume"] as? String {
-                    bib += "    volume = {\(vol)},\n"
-                }
-                if let page = ref["first-page"] as? String {
-                    bib += "    pages = {\(page)},\n"
-                }
-                
-                // DOI
-                if let d = doi {
-                    bib += "    doi = {\(d)},\n"
-                }
-                
-                bib += "    note = {Extracted via CrossRef reference list using source DOI}\n"
-                bib += "}"
-                
-                bibtexList.append(bib)
             }
             
-            return bibtexList
+            return results
         }
     } catch {
         print("DEBUG - Failed to fetch reference list for DOI \(doi): \(error)")
     }
     
     return nil
+}
+
+/// Helper to build BibTeX from the sparse "reference" object in CrossRef metadata
+private func buildSparseBibTeX(_ ref: [String: Any], options: BibTeXFormatOptions) -> String {
+    let key = ref["key"] as? String ?? "ref\(UUID().uuidString.prefix(8))"
+    let doi = ref["DOI"] as? String
+    var type = "article"
+    
+    // Attempt guess type
+    if doi == nil && (ref["series-title"] != nil || ref["journal-title"] == nil) {
+        type = "misc" 
+    }
+    
+    var bib = "@\(type){\(key),\n"
+    
+    if let author = ref["author"] as? String {
+         bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(author) : author)},\n"
+    }
+    
+    if let artTitle = ref["article-title"] as? String {
+        bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(artTitle) : artTitle)},\n"
+    } else if let seriesTitle = ref["series-title"] as? String {
+         bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(seriesTitle) : seriesTitle)},\n"
+    } else if let unstruct = ref["unstructured"] as? String {
+         // If we have absolutely nothing else, put unstructured in title or note
+         // often unstructured is "H. J. Herrmann, Book Title (1990)"
+         if bib.contains("author =") == false {
+              bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(unstruct) : unstruct)},\n"
+         } else {
+              bib += "    note = {\(options.useLaTeXEscaping ? latexEscaped(unstruct) : unstruct)},\n"
+         }
+    }
+    
+    if let journal = ref["journal-title"] as? String {
+        bib += "    journal = {\(options.useLaTeXEscaping ? latexEscaped(journal) : journal)},\n"
+    }
+    
+    if let year = ref["year"] as? String {
+        bib += "    year = {\(year)},\n"
+    }
+    
+    if let vol = ref["volume"] as? String {
+        bib += "    volume = {\(vol)},\n"
+    }
+    if let page = ref["first-page"] as? String {
+        bib += "    pages = {\(page)},\n"
+    }
+    
+    if let d = doi {
+        bib += "    doi = {\(d)},\n"
+    }
+    
+    bib += "    note = {Metadata limited (CrossRef sparse reference)}\n"
+    bib += "}"
+    
+    return bib
 }
 
 /// Fetch BibTeX directly from arXiv for a given arXiv ID
@@ -3932,4 +4011,195 @@ private func fetchBibTeXFromArXiv(_ arxivID: String) async -> String? {
         print("DEBUG - Failed to fetch arXiv BibTeX for \(cleanID): \(error)")
         return nil
     }
+}
+
+/// Fallback Search: Find DOI by Title using CrossRef API
+private func fetchDOIFromTitle(_ title: String) async -> String? {
+    let query = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    let urlString = "https://api.crossref.org/works?query.title=\(query)&rows=1&select=DOI,score"
+    
+    guard let url = URL(string: urlString) else { return nil }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0 (mailto:user@example.com)", forHTTPHeaderField: "User-Agent")
+    
+    do {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
+        
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? [String: Any],
+           let items = message["items"] as? [[String: Any]],
+           let firstItem = items.first,
+           let doi = firstItem["DOI"] as? String {
+            
+            // Optional: Check score or title match similarity to avoid bad matches?
+            // For now, trust the first result if it exists.
+            return doi
+        }
+    } catch {
+        print("DEBUG - DOI Title Search failed: \(error)")
+    }
+    
+    return nil
+}
+
+/// Helper: Find DOI using sophisticated logic (Metadata -> Text -> PII -> Title Search)
+private func findDOI(in doc: PDFDocument, allowOnline: Bool) async -> String? {
+    var docDOI: String? = nil
+    
+    // 1. Check Metadata Attributes first (Subject, Keywords)
+    if let attrs = doc.documentAttributes {
+        let candidates = [attrs[PDFDocumentAttribute.subjectAttribute] as? String, 
+                          attrs[PDFDocumentAttribute.keywordsAttribute] as? String]
+        
+        for candidate in candidates {
+            if let text = candidate, let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+                 var doi = String(text[doiMatch])
+                 if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
+                 docDOI = doi
+                 break
+            }
+        }
+    }
+    
+    // 2. If not found in metadata, scan first 3 pages for DOI
+    if docDOI == nil {
+        for pageIndex in 0..<min(3, doc.pageCount) {
+             if let page = doc.page(at: pageIndex), let text = page.string {
+                 if let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+                     var doi = String(text[doiMatch])
+                     if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
+                     docDOI = doi
+                     break
+                 }
+             }
+        }
+    }
+    
+    // 3. Fallback: Check for PII in Metadata or Text
+    if docDOI == nil {
+        var piiCandidates: [String] = []
+        
+        // Scan Metadata
+        if let attrs = doc.documentAttributes {
+            for (_, value) in attrs {
+                if let text = value as? String { piiCandidates.append(text) }
+            }
+        }
+        
+        // Scan first 3 pages
+        for pageIndex in 0..<min(3, doc.pageCount) {
+             if let page = doc.page(at: pageIndex), let text = page.string {
+                 piiCandidates.append(text)
+             }
+        }
+        
+        // Regex for PII with optional S/0 prefix
+        let piiPattern = #"(?:PII:?\s*)?((?:S|0|)\d{4}-?\d{3,4}\(?\d{2}\)?\d{5,6}-?[\dX])"#
+        
+        for text in piiCandidates {
+            if let piiMatch = text.range(of: piiPattern, options: .regularExpression) {
+                var pii = String(text[piiMatch])
+                if pii.lowercased().hasPrefix("pii") {
+                    pii = pii.components(separatedBy: ":").last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? pii
+                }
+                
+                let cleanPII = pii.trimmingCharacters(in: CharacterSet(charactersIn: ".:,; "))
+                let potentialDOI = "10.1016/\(cleanPII)"
+                
+                print("DEBUG - Detected PII: \(cleanPII). Constructed DOI: \(potentialDOI)")
+                docDOI = potentialDOI
+                break
+            }
+        }
+    }
+    
+    // 4. Fallback: Search online by Title
+    if docDOI == nil, allowOnline {
+        var searchTitle: String? = nil
+        if let attrs = doc.documentAttributes, let title = attrs[PDFDocumentAttribute.titleAttribute] as? String, !title.isEmpty {
+            searchTitle = title
+        }
+        
+        if let title = searchTitle {
+            print("DEBUG - No DOI found locally. Searching CrossRef by Title: '\(title)'")
+            if let foundDOI = await fetchDOIFromTitle(title) {
+                print("DEBUG - Found DOI via Title Search: \(foundDOI)")
+                docDOI = foundDOI
+            }
+        }
+    }
+    
+    return docDOI
+}
+
+/// Query OpenLibrary for book metadata by title
+private func queryOpenLibrary(_ title: String, options: BibTeXFormatOptions) async -> String? {
+    guard let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+    let urlString = "https://openlibrary.org/search.json?title=\(encodedTitle)&limit=1"
+    guard let url = URL(string: urlString) else { return nil }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+    request.timeoutInterval = 10
+    
+    do {
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let docs = json["docs"] as? [[String: Any]],
+           let firstDoc = docs.first {
+            
+            let foundTitle = firstDoc["title"] as? String ?? title
+            let authorNames = firstDoc["author_name"] as? [String] ?? []
+            let firstYear = firstDoc["first_publish_year"] as? Int
+            let publisher = (firstDoc["publisher"] as? [String])?.first
+            let publishPlace = (firstDoc["publish_place"] as? [String])?.first
+            
+            print("DEBUG - OpenLibrary raw data: title='\(foundTitle)', authors=\(authorNames), year=\(firstYear ?? 0), publisher='\(publisher ?? "nil")', place='\(publishPlace ?? "nil")'")
+            
+            // Validate match - title should be reasonably similar
+            let cleanInput = title.lowercased().filter { $0.isLetter || $0.isNumber }
+            let cleanFound = foundTitle.lowercased().filter { $0.isLetter || $0.isNumber }
+            guard cleanFound.contains(cleanInput.prefix(20)) || cleanInput.contains(cleanFound.prefix(20)) else {
+                print("DEBUG - OpenLibrary title mismatch: '\(foundTitle)' vs '\(title)'")
+                return nil
+            }
+            
+            // Format author names
+            var formattedAuthors = authorNames.joined(separator: " and ")
+            if options.shortenAuthors && !authorNames.isEmpty {
+                formattedAuthors = authorNames.map { formatAuthorName($0) }.joined(separator: " and ")
+            }
+            
+            // Generate BibTeX key
+            let firstAuthorLast = authorNames.first?.components(separatedBy: " ").last ?? "Unknown"
+            let yearStr = firstYear.map { String($0) } ?? ""
+            let key = "\(firstAuthorLast)\(yearStr)"
+            
+            var bib = "@book{\(key),\n"
+            if !formattedAuthors.isEmpty {
+                bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(formattedAuthors) : formattedAuthors)},\n"
+            }
+            bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(foundTitle) : foundTitle)},\n"
+            if let year = firstYear {
+                bib += "    year = {\(year)},\n"
+            }
+            if let pub = publisher {
+                bib += "    publisher = {\(options.useLaTeXEscaping ? latexEscaped(pub) : pub)},\n"
+            }
+            if let place = publishPlace {
+                bib += "    address = {\(options.useLaTeXEscaping ? latexEscaped(place) : place)},\n"
+            }
+            bib += "}"
+            
+            print("DEBUG - OpenLibrary found book: '\(foundTitle)' by \(authorNames.joined(separator: ", "))")
+            return bib
+        }
+    } catch {
+        print("DEBUG - OpenLibrary query failed: \(error)")
+    }
+    
+    return nil
 }
