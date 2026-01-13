@@ -440,12 +440,31 @@ struct BibTeXFormatOptions {
 func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOptions = BibTeXFormatOptions()) async -> String? {
     guard let doc = PDFDocument(url: url) else { return nil }
 
-    // First, try to extract DOI (works offline)
+    // First, try to extract DOI and arXiv ID (works offline)
     var doi = ""
+    var arxivID = ""
     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+        // Extract DOI
         let doiPattern = #"10\.\d{4,9}/[-._;()/:A-Z0-9]+"#
         if let range = text.range(of: doiPattern, options: [.regularExpression, .caseInsensitive]) {
             doi = String(text[range])
+        }
+        
+        // Extract arXiv ID (formats: arXiv:YYMM.NNNNN or just YYMM.NNNNN)
+        let arxivPattern = #"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)"#
+        if let range = text.range(of: arxivPattern, options: [.regularExpression, .caseInsensitive]) {
+            var match = String(text[range])
+            // Clean up to get just the ID
+            match = match.replacingOccurrences(of: "arXiv:", with: "", options: .caseInsensitive)
+            arxivID = match.trimmingCharacters(in: .whitespaces)
+        }
+    }
+
+    // If online lookup is allowed and we have an arXiv ID, try arXiv first
+    if !arxivID.isEmpty && allowOnline {
+        if let arxivBib = await fetchBibTeXFromArXiv(arxivID) {
+            // Apply formatting options to arXiv BibTeX
+            return reformatBibTeX(arxivBib, options: options)
         }
     }
 
@@ -2152,8 +2171,9 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
     var startCollecting = false
     var pagesCollected = 0
     
-    // 0. Try to find DOI of the document itself first
+    // 0. Try to find DOI and arXiv ID of the document itself first
     var docDOI: String? = nil
+    var docArXivID: String? = nil
     
     // Check Metadata Attributes first (Subject, Keywords)
     if let attrs = doc.documentAttributes {
@@ -2170,29 +2190,51 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
         }
     }
     
-    // If not found in metadata, scan first 3 pages
-    if docDOI == nil {
+    // If not found in metadata, scan first 3 pages for DOI and arXiv ID
+    if docDOI == nil || docArXivID == nil {
         for pageIndex in 0..<min(3, doc.pageCount) {
              if let page = doc.page(at: pageIndex), let text = page.string {
-                 if let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
+                 // Try to find DOI
+                 if docDOI == nil, let doiMatch = text.range(of: #"10\.\d{4,}/[^\s]+"#, options: .regularExpression) {
                      var doi = String(text[doiMatch])
                      // Cleanup
                      if let last = doi.last, ",;.".contains(last) { doi.removeLast() }
                      docDOI = doi
-                     break
                  }
+                 
+                 // Try to find arXiv ID
+                 if docArXivID == nil {
+                     let arxivPattern = #"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)"#
+                     if let arxivMatch = text.range(of: arxivPattern, options: [.regularExpression, .caseInsensitive]) {
+                         var arxivID = String(text[arxivMatch])
+                         arxivID = arxivID.replacingOccurrences(of: "arXiv:", with: "", options: .caseInsensitive)
+                             .trimmingCharacters(in: .whitespaces)
+                         docArXivID = arxivID
+                     }
+                 }
+                 
+                 if docDOI != nil && docArXivID != nil { break }
              }
         }
     }
 
-    // New Strategy: If we have a DOI and online lookup is allowed, try to fetch the reference list directly!
-    if let doi = docDOI, allowOnline {
-         print("DEBUG - Found Document DOI: \(doi). Attempting to fetch reference list from CrossRef...")
-         if let onlineRefs = await fetchReferenceListFromDOI(doi, options: options) {
-             print("DEBUG - Successfully fetched \(onlineRefs.count) references from CrossRef directly.")
-             return onlineRefs
-         }
-         print("DEBUG - Failed to fetch references from CrossRef (or list empty). Falling back to text parsing.")
+    // New Strategy: Try online reference list fetching
+    if allowOnline {
+        // Priority 1: Try arXiv if we have an arXiv ID
+        if let arxivID = docArXivID {
+            print("DEBUG - Found arXiv ID: \(arxivID). Note: arXiv does not provide reference lists via API.")
+            print("DEBUG - Will fall back to text parsing for arXiv papers.")
+        }
+        
+        // Priority 2: Try CrossRef if we have a DOI
+        if let doi = docDOI {
+             print("DEBUG - Found Document DOI: \(doi). Attempting to fetch reference list from CrossRef...")
+             if let onlineRefs = await fetchReferenceListFromDOI(doi, options: options) {
+                 print("DEBUG - Successfully fetched \(onlineRefs.count) references from CrossRef directly.")
+                 return onlineRefs
+             }
+             print("DEBUG - Failed to fetch references from CrossRef (or list empty). Falling back to text parsing.")
+        }
     }
 
 
@@ -3738,4 +3780,60 @@ private func fetchReferenceListFromDOI(_ doi: String, options: BibTeXFormatOptio
     }
     
     return nil
+}
+
+/// Fetch BibTeX directly from arXiv for a given arXiv ID
+private func fetchBibTeXFromArXiv(_ arxivID: String) async -> String? {
+    // Clean the arXiv ID (remove "arX iv:" prefix if present)
+    let cleanID = arxivID.replacingOccurrences(of: "arXiv:", with: "", options: .caseInsensitive)
+        .trimmingCharacters(in: .whitespaces)
+    
+    let urlString = "https://arxiv.org/bibtex/\(cleanID)"
+    guard let url = URL(string: urlString) else { return nil }
+    
+    var request = URLRequest(url: url)
+    request.setValue("GhostPDF/1.0", forHTTPHeaderField: "User-Agent")
+    request.timeoutInterval = 10
+    
+    do {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return nil
+        }
+        
+        guard var bibtex = String(data: data, encoding: .utf8) else { return nil }
+        
+        // Check if response contains BibTeX (should start with @)
+        bibtex = bibtex.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard bibtex.hasPrefix("@") else { return nil }
+        
+        // Add arXiv ID fields if not already present
+        if !bibtex.contains("eprint") {
+            // Find the closing brace
+            if let closingBraceRange = bibtex.range(of: "}", options: .backwards) {
+                let insertPosition = closingBraceRange.lowerBound
+                
+                // Extract primary category if exists in the BibTeX
+                var eprintclass = "arXiv"
+                if let primaryClassRange = bibtex.range(of: "primaryClass\\s*=\\s*\\{([^}]+)\\}", options: .regularExpression) {
+                    let match = String(bibtex[primaryClassRange])
+                    if let valueRange = match.range(of: "\\{([^}]+)\\}", options: .regularExpression) {
+                        eprintclass = String(match[valueRange])
+                            .replacingOccurrences(of: "{", with: "")
+                            .replacingOccurrences(of: "}", with: "")
+                    }
+                }
+                
+                let arxivFields = ",\n  eprint = {\(cleanID)},\n  eprinttype = {arXiv},\n  eprintclass = {\(eprintclass)}\n"
+                bibtex.insert(contentsOf: arxivFields, at: insertPosition)
+            }
+        }
+        
+        return bibtex
+    } catch {
+        print("DEBUG - Failed to fetch arXiv BibTeX for \(cleanID): \(error)")
+        return nil
+    }
 }
