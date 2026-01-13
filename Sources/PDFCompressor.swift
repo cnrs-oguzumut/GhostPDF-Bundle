@@ -457,14 +457,53 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
             // Clean up to get just the ID
             match = match.replacingOccurrences(of: "arXiv:", with: "", options: .caseInsensitive)
             arxivID = match.trimmingCharacters(in: .whitespaces)
+            print("DEBUG - Found arXiv ID: \(arxivID)")
         }
     }
 
     // If online lookup is allowed and we have an arXiv ID, try arXiv first
     if !arxivID.isEmpty && allowOnline {
+        print("DEBUG - Attempting to fetch BibTeX from arXiv for ID: \(arxivID)")
         if let arxivBib = await fetchBibTeXFromArXiv(arxivID) {
-            // Apply formatting options to arXiv BibTeX
-            return reformatBibTeX(arxivBib, options: options)
+            print("DEBUG - Successfully fetched BibTeX from arXiv!")
+            print("DEBUG - Original arXiv BibTeX:\n\(arxivBib)")
+            
+            // For arXiv entries, apply formatting but ensure arXiv fields are preserved
+            // reformatBibTeX might strip arXiv-specific fields, so we apply formatting carefully
+            var formattedBib = reformatBibTeX(arxivBib, options: options)
+            print("DEBUG - After reformatBibTeX:\n\(formattedBib)")
+            
+            // Ensure arXiv fields are still present (they might have been stripped)
+            if !formattedBib.contains("eprint") && arxivBib.contains("eprint") {
+                print("DEBUG - eprint field was stripped! Attempting to restore...")
+                // Extract and re-add arXiv fields
+                if let eprintRange = arxivBib.range(of: #"eprint\s*=\s*\{[^}]+\}"#, options: .regularExpression),
+                   let archiveRange = arxivBib.range(of: #"archivePrefix\s*=\s*\{[^}]+\}"#, options: .regularExpression),
+                   let primaryRange = arxivBib.range(of: #"primaryClass\s*=\s*\{[^}]+\}"#, options: .regularExpression) {
+                    
+                    let eprint = String(arxivBib[eprintRange])
+                    let archive = String(arxivBib[archiveRange])
+                    let primary = String(arxivBib[primaryRange])
+                    
+                    print("DEBUG - Extracted fields: \(eprint), \(archive), \(primary)")
+                    
+                    // Insert before the closing brace
+                    if let closingBrace = formattedBib.range(of: "}", options: .backwards) {
+                        let insertFields = ",\n  \(eprint),\n  \(archive),\n  \(primary)\n"
+                        formattedBib.insert(contentsOf: insertFields, at: closingBrace.lowerBound)
+                        print("DEBUG - Restored arXiv fields!")
+                    }
+                } else {
+                    print("DEBUG - Failed to extract arXiv fields from original BibTeX")
+                }
+            } else {
+                print("DEBUG - eprint field preserved through reformatting")
+            }
+            
+            print("DEBUG - Final BibTeX:\n\(formattedBib)")
+            return formattedBib
+        } else {
+            print("DEBUG - Failed to fetch BibTeX from arXiv, will try other methods")
         }
     }
 
@@ -3465,7 +3504,7 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
         }
 
         // Only process if it looks like a BibTeX entry
-        guard entry.contains("@article") || entry.contains("@inproceedings") || entry.contains("@book") else {
+        guard entry.contains("@article") || entry.contains("@inproceedings") || entry.contains("@book") || entry.contains("@misc") else {
             reformattedEntries.append(entry)
             continue
         }
@@ -3597,10 +3636,11 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
 func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil) -> String {
     // Default fields to remove (commonly unnecessary for citations)
     let defaultFieldsToRemove: Set<String> = [
-        "abstract", "language", "keywords", "note", "url", "urldate",
-        "issn", "eprint", "archiveprefix", "primaryclass", "file",
-        "mendeley-groups", "annote", "review", "copyright", "month",
-        "date-modified", "date-added", "bdsk-url-1", "bdsk-url-2", "bdsk-file-1"
+        "abstract", "keywords", "url", "urldate", "note", "annotation",
+        "file", "issn", "isbn", "doi", "annote", "copyright", "language",
+        "month", "address", "series", "edition", "howpublished",
+        "mendeley-groups", "review", "date-modified", "date-added", "bdsk-url-1", "bdsk-url-2", "bdsk-file-1"
+        // Removed from this list: "eprint", "archiveprefix", "primaryclass" - these are important for arXiv papers
     ]
     
     let fieldsToClean = fieldsToRemove ?? defaultFieldsToRemove
