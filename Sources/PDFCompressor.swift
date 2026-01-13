@@ -2918,6 +2918,8 @@ private let JOURNAL_ABBREV: [String: String] = [
     "Proceedings of the National Academy of Sciences": "Proc. Natl. Acad. Sci. U.S.A.",
     "Annual Review of Materials Research": "Annu. Rev. Mater. Res.",
     "Proceedings of the Royal Society A": "Proc. R. Soc. A",
+    "Proceedings of the Royal Society of London. Series A: Mathematical, Physical and Engineering Sciences": "Proc. R. Soc. Lond. Ser. A",
+    "Journal of Nonlinear Science": "J. Nonlinear Sci.",
     "Journal of Engineering Materials and Technology": "J. Eng. Mater. Technol.",
     "International Journal of Engineering Science": "Int. J. Eng. Sci."
 ]

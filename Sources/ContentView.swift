@@ -208,7 +208,7 @@ struct ContentView: View {
                     Text("Advanced").tag(4)
                     Text("AI").tag(5)
                     Text("Researcher").tag(6)
-                    Text("BibTeX").tag(7)
+                    // BibTeX tab (7) disabled due to performance issues
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
@@ -290,6 +290,9 @@ struct ContentView: View {
                     .opacity(selectedTab == 6 ? 1 : 0)
                     .allowsHitTesting(selectedTab == 6)
 
+
+                    // BibTeX tab disabled - causes freezing
+                    /*
                     BibTeXFormatterView(
                         selectedFiles: $selectedFiles,
                         outputText: $bibFormatterOutputText,
@@ -297,6 +300,7 @@ struct ContentView: View {
                     )
                     .opacity(selectedTab == 7 ? 1 : 0)
                     .allowsHitTesting(selectedTab == 7)
+                    */
                 }
                 
                 // Hide compression progress bar in Researcher (6) and BibTeX (7) tabs
@@ -1993,32 +1997,12 @@ struct ContentView: View {
                         }
                     }
                 } else if ext == "bib" {
-                    // Delegate to Bib handler. Since handleBibFileDrop takes providers, we might act on URL directly?
-                    // handleBibFileDrop uses loadObject(ofClass: URL.self).
-                    // We can just call the logic directly here or reuse handleBibFileDrop logic.
-                    // Reusing handleBibFileDrop from here is tricky as it takes providers.
-                    // Easier to just read the content here.
-                    
-                    if let content = try? String(contentsOf: url, encoding: .utf8) {
-                        DispatchQueue.main.async {
-                            // If there are multiple bibs, this overrides? Append if non-empty?
-                            // For simplicity, mimic single drop behavior or append cleanly.
-                            // We should probably invoke the centralized cleanup/merge logic.
-                            // But since handleBibFileDrop keeps lock etc, let's just use MainActor update.
-                            
-                            // Better: Delegate to handleBibFileDrop by passing providers?
-                            // No, we are already inside a provider loop.
-                            
-                            // We'll append to existing text or replace?
-                            // ResearcherTabView logic: "Drop .bib files".
-                            // If we drop multiple, we usually want to merge.
-                            
-                            let cleanContent = cleanBibTeX(content)
-                            if self.researcherOutputText.isEmpty {
-                                self.researcherOutputText = cleanContent
-                            } else {
-                                self.researcherOutputText += "\n\n" + cleanContent
-                            }
+                    // Add .bib files to the file list (just like PDFs)
+                    DispatchQueue.main.async {
+                        if !selectedFiles.contains(where: { $0.url == url }) {
+                            let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+                            // Auto-check .bib files when dropped
+                            selectedFiles.append(ContentView.PDFFile(url: url, originalSize: size, isChecked: true))
                         }
                     }
                 }
@@ -3965,6 +3949,43 @@ struct ResearcherTabView: View {
                                 }
                             }
                             .toggleStyle(.switch)
+                            
+                            Divider()
+                            
+                            // Formatting Options - always visible
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Formatting Options")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+                                
+                                Toggle(isOn: $shortenAuthors) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "person.2.fill")
+                                        Text("Shorten Authors")
+                                            .font(.subheadline)
+                                    }
+                                }
+                                .toggleStyle(.checkbox)
+                                
+                                Toggle(isOn: $abbreviateJournals) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "book.fill")
+                                        Text("Abbreviate Journals")
+                                            .font(.subheadline)
+                                    }
+                                }
+                                .toggleStyle(.checkbox)
+                                
+                                Toggle(isOn: $useLaTeXEscaping) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "textformat")
+                                        Text("Use LaTeX Escaping")
+                                            .font(.subheadline)
+                                    }
+                                }
+                                .toggleStyle(.checkbox)
+                            }
                             
                             Divider()
 
