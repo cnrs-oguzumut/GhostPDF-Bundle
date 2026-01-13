@@ -3827,6 +3827,8 @@ private func fetchReferenceListFromDOI(_ doi: String, options: BibTeXFormatOptio
            let references = message["reference"] as? [[String: Any]],
            !references.isEmpty {
             
+            print("DEBUG - CrossRef Metadata has \(references.count) references.")
+            
             // Process in batches to avoid rate limiting (429)
             let batchSize = 5
             var results: [String] = []
