@@ -2287,9 +2287,13 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
         
         let lines = text.components(separatedBy: .newlines)
         
-        for line in lines {
+        // Track if we found a potential reference pattern on this page to help implicit detection
+        var pageRefPatternCount = 0
+        
+        for (lineIdx, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            
+            if trimmed.isEmpty { continue }
+
             // Detect start of references section
             if !startCollecting {
                 let refHeaders = ["References", "REFERENCES", "Bibliography", "BIBLIOGRAPHY", 
@@ -2298,43 +2302,96 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
                 // If it's an exact match on a line, it's very likely a header
                 if refHeaders.contains(trimmed) {
                     startCollecting = true
-                    print("DEBUG - Found references section on page \(pageIndex)")
+                    print("DEBUG - Found references section (exact match) on page \(pageIndex)")
                     continue
+                }
+                
+                // Regex for "6. References" or "VII. Bibliography"
+                if trimmed.range(of: #"^(\d+\.|[IVX]+\.)\s*(References|Bibliography|Literature Cited)$"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                     startCollecting = true
+                     print("DEBUG - Found references section (numbered header) on page \(pageIndex)")
+                     continue
                 }
                 
                 // If it's a prefix (e.g. "References:"), validate it's followed by something that looks like a ref
                 if refHeaders.contains(where: { trimmed.hasPrefix($0) }) {
-                    var nextLine: String? = nil
-                    let currentIndex = lines.firstIndex(of: line) ?? -1
-                    if currentIndex != -1 && currentIndex < lines.count - 1 {
-                        for i in (currentIndex + 1)..<lines.count {
-                            let candidate = lines[i].trimmingCharacters(in: .whitespaces)
-                            if !candidate.isEmpty {
-                                nextLine = candidate
-                                break
-                            }
+                    // Check if the REST of the line is empty or just punctuation
+                    let pattern = "^(" + refHeaders.joined(separator: "|") + ")[:.]?$"
+                    if trimmed.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
+                        startCollecting = true
+                        print("DEBUG - Found references section (regex prefix match) on page \(pageIndex)")
+                        continue
+                    }
+                }
+                
+                // IMPLICIT DETECTION:
+                // For arXiv papers, references might be anywhere (before appendix).
+                // For generic papers, usually at the end.
+                let isLatePage = pageIndex >= Int(Double(doc.pageCount) * 0.8) || pageIndex >= doc.pageCount - 2
+                let shouldCheckImplicit = (docArXivID != nil) || isLatePage // Always check for arXiv papers
+                
+                if shouldCheckImplicit {
+                    // Diagnostic
+                    if isLatePage && lineIdx < 3 {
+                         print("DEBUG - Page \(pageIndex) Line \(lineIdx): '\(trimmed)'")
+                    }
+
+                    // Strong signal: Line starts with [1]
+                    if trimmed.range(of: #"^\[1\]"#, options: .regularExpression) != nil {
+                        // Found explicit start of numbered references!
+                        startCollecting = true
+                        print("DEBUG - Implicitly detected reference section (start with [1]) on page \(pageIndex)")
+                        // Process this line
+                    }
+                    // Strong signal: Line starts with 1. followed by text (and year/author-like content)
+                    else if trimmed.range(of: #"^1\.\s+[A-Z]"#, options: .regularExpression) != nil {
+                         // Verify it looks like a citation (has year or author names) to avoid false positives (e.g. "1. Introduction")
+                         let hasYear = trimmed.range(of: #"(19|20)\d{2}"#, options: .regularExpression) != nil
+                         let hasPages = trimmed.contains("pp.") || trimmed.contains("pages")
+                         
+                         if hasYear || hasPages {
+                            startCollecting = true
+                            print("DEBUG - Implicitly detected reference section (start with 1. + year/pages) on page \(pageIndex)")
+                            // Process this line
+                         }
+                    }
+                    else {
+                        // General pattern accumulation for other numbers [2], [3] etc.
+                        if trimmed.range(of: #"^\[\d+\]"#, options: .regularExpression) != nil {
+                            pageRefPatternCount += 1
+                        } else if trimmed.range(of: #"^\d+\.\s"#, options: .regularExpression) != nil {
+                            // Only count x. pattern if it looks reference-y (has year)
+                             if trimmed.range(of: #"(19|20)\d{2}"#, options: .regularExpression) != nil {
+                                 pageRefPatternCount += 1
+                             }
+                        }
+                        
+                        // If we see multiple ref-like lines on this page, assume we are in references
+                        // Lower threshold if we have arXiv ID
+                        let threshold = (docArXivID != nil) ? 2 : 3
+                        if pageRefPatternCount >= threshold {
+                             startCollecting = true
+                             print("DEBUG - Implicitly detected reference section (pattern count \(pageRefPatternCount)) on page \(pageIndex)")
                         }
                     }
-                    
-                    if let next = nextLine, let firstChar = next.first, firstChar.isLowercase {
-                        continue 
-                    }
-                    
-                    startCollecting = true
-                    print("DEBUG - Found references section (prefix) on page \(pageIndex)")
-                    continue
                 }
             }
 
             if startCollecting {
-                // Skip lines that look like math/equations (contain \partial, ∂, =, etc.)
-                // Skip very short lines (< 10 chars) or lines that are just equations
-                let mathPatterns = ["∂", "∫", "∑", "α", "β", "γ", "ψ", "ϵ", "∈", "∀", "∃"]
-                let hasMath = mathPatterns.contains { trimmed.contains($0) }
-                let isEquation = trimmed.contains("=") && trimmed.count < 40
-
-                // Only collect lines that look like references (not math)
-                if !hasMath && !isEquation && trimmed.count > 15 {
+                // heuristic to stop if we hit "Appendix" or "Supplementary Material" headers
+                let stopHeaders = ["Appendix", "APPENDIX", "Supplementary Material", "SUPPLEMENTARY MATERIAL"]
+                if stopHeaders.contains(where: { trimmed.hasPrefix($0) }) && trimmed.count < 30 {
+                     // Only stop if it looks like a header (short line)
+                     print("DEBUG - Stopping collection at Appendix/Supplementary header")
+                     break
+                }
+            
+                // Skip lines that look like obvious equations only if they are very short
+                // Physics papers have long equations that we shouldn't confuse with refs
+                // But we should keep lines that *contain* math if they look like part of a title
+                let isEquation = trimmed.contains("=") && !trimmed.contains(",") && trimmed.count < 30
+                
+                if !isEquation {
                     referenceText += line + "\n"
                 }
             }
@@ -2346,11 +2403,10 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
         }
     }
     
-    print("DEBUG - Collected \(pagesCollected) pages of references, total chars: \(referenceText.count)")
+    // Fallback: If no references collected but we saw implicit patterns, maybe we missed the "start"
+    // (This is hard to recover, but the implicit detection above should cover it)
     
-    if referenceText.isEmpty {
-        return ["// No references section found in PDF"]
-    }
+    print("DEBUG - Collected \(pagesCollected) pages of references, total chars: \(referenceText.count)")
     
     // 2. Split into individual reference entries
     let refLines = referenceText.components(separatedBy: .newlines)

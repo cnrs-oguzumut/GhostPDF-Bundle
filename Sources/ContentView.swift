@@ -3957,40 +3957,7 @@ struct ResearcherTabView: View {
                             
                             Divider()
                             
-                            // Formatting Options - always visible
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Formatting Options")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.secondary)
-                                
-                                Toggle(isOn: $shortenAuthors) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "person.2.fill")
-                                        Text("Shorten Authors")
-                                            .font(.subheadline)
-                                    }
-                                }
-                                .toggleStyle(.checkbox)
-                                
-                                Toggle(isOn: $abbreviateJournals) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "book.fill")
-                                        Text("Abbreviate Journals")
-                                            .font(.subheadline)
-                                    }
-                                }
-                                .toggleStyle(.checkbox)
-                                
-                                Toggle(isOn: $useLaTeXEscaping) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "textformat")
-                                        Text("Use LaTeX Escaping")
-                                            .font(.subheadline)
-                                    }
-                                }
-                                .toggleStyle(.checkbox)
-                            }
+                            // Formatting Options moved to Output area
                             
                             Divider()
 
@@ -4200,7 +4167,7 @@ struct ResearcherTabView: View {
                                 .foregroundColor(.red)
                                 .font(.caption)
                                 
-                                if outputText.contains("@article") || outputText.contains("@book") || outputText.contains("@inproceedings") {
+                                if outputText.contains("@article") || outputText.contains("@book") || outputText.contains("@inproceedings") || outputText.contains("@misc") {
                                     Button(action: cleanOutput) {
                                         Label("Clean", systemImage: "wand.and.rays")
                                     }
@@ -4229,8 +4196,8 @@ struct ResearcherTabView: View {
                             Spacer()
                         }
 
-                        // Formatting options - show only when BibTeX is displayed
-                        if outputText.contains("@article") || outputText.contains("@book") {
+                        // Formatting options - show whenever output is generated (BibTeX or References)
+                        if !outputText.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Formatting Options")
                                     .font(.caption)
