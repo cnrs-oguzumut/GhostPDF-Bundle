@@ -120,10 +120,15 @@ struct ContentView: View {
     @State private var isSummarizing: Bool = false
     
     // Researcher Tab State (separate from AI tab)
-    // Researcher Tab State (separate from AI tab)
     @SceneStorage("researcherOutputText") private var researcherOutputText: String = ""
     @State private var isResearcherProcessing: Bool = false
     @State private var previousTab: Int = 0
+    @State private var savedResearcherOutput: String = "" // Preserve BibTeX when switching tabs
+
+    // BibTeX Tab State (dedicated tab for .bib file formatting)
+    @SceneStorage("bibFormatterOutputText") private var bibFormatterOutputText: String = ""
+    @State private var isBibFormatterProcessing: Bool = false
+    @State private var savedBibFiles: [PDFFile] = [] // Preserve .bib files when switching tabs
     
     // BibTeX Options
     @AppStorage("shortenAuthors") private var shortenAuthors = false
@@ -203,17 +208,46 @@ struct ContentView: View {
                     Text("Advanced").tag(4)
                     Text("AI").tag(5)
                     Text("Researcher").tag(6)
+                    Text("BibTeX").tag(7)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
                 .onChange(of: selectedTab) { newValue in
-                    // User Request: Auto-clear files when leaving Researcher tab
+                    // Handle Researcher tab transitions (tab 6)
                     if previousTab == 6 && newValue != 6 {
+                        // Leaving Researcher tab: save and clear BibTeX output
+                        savedResearcherOutput = researcherOutputText
+                        researcherOutputText = ""
+
+                        // Clear files and status
                         selectedFiles.removeAll()
                         statusMessage = ""
                         totalProgress = 0
                         currentFileIndex = 0
+                    } else if previousTab != 6 && newValue == 6 {
+                        // Returning to Researcher tab: restore BibTeX output
+                        if !savedResearcherOutput.isEmpty {
+                            researcherOutputText = savedResearcherOutput
+                        }
                     }
+
+                    // Handle BibTeX tab transitions (tab 7)
+                    if previousTab == 7 && newValue != 7 {
+                        // Leaving BibTeX tab: save .bib files
+                        savedBibFiles = selectedFiles.filter { $0.url.pathExtension.lowercased() == "bib" }
+
+                        // Clear files and status
+                        selectedFiles.removeAll()
+                        statusMessage = ""
+                        totalProgress = 0
+                        currentFileIndex = 0
+                    } else if previousTab != 7 && newValue == 7 {
+                        // Returning to BibTeX tab: restore .bib files
+                        if !savedBibFiles.isEmpty {
+                            selectedFiles = savedBibFiles
+                        }
+                    }
+
                     previousTab = newValue
                     
                     if (newValue == 1 || newValue == 2 || newValue == 3 || newValue == 4 || newValue == 5) && !appState.ghostscriptAvailable {
@@ -255,9 +289,18 @@ struct ContentView: View {
                     )
                     .opacity(selectedTab == 6 ? 1 : 0)
                     .allowsHitTesting(selectedTab == 6)
+
+                    BibTeXFormatterView(
+                        selectedFiles: $selectedFiles,
+                        outputText: $bibFormatterOutputText,
+                        isProcessing: $isBibFormatterProcessing
+                    )
+                    .opacity(selectedTab == 7 ? 1 : 0)
+                    .allowsHitTesting(selectedTab == 7)
                 }
                 
-                if isCompressing {
+                // Hide compression progress bar in Researcher (6) and BibTeX (7) tabs
+                if isCompressing && selectedTab != 6 && selectedTab != 7 {
                     VStack {
                         ProgressView(value: totalProgress)
                             .progressViewStyle(.linear)
@@ -267,8 +310,9 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 24)
                 }
-                
-                if !statusMessage.isEmpty {
+
+                // Hide status message in Researcher (6) and BibTeX (7) tabs
+                if !statusMessage.isEmpty && selectedTab != 6 && selectedTab != 7 {
                     Text(statusMessage)
                         .font(.system(size: 13))
                         .foregroundColor(statusIsError ? Color(red: 248/255, green: 113/255, blue: 113/255) : Color(red: 74/255, green: 222/255, blue: 128/255))
@@ -276,8 +320,8 @@ struct ContentView: View {
                         .padding(.horizontal, 24)
                 }
 
-                // Hide the compress button on AI tab and Researcher tab
-                if selectedTab != 5 && selectedTab != 6 {
+                // Hide the compress button on AI tab, Researcher tab, and BibTeX tab
+                if selectedTab != 5 && selectedTab != 6 && selectedTab != 7 {
                     Button(action: performAction) {
                         Text(actionButtonTitle)
                             .font(.system(size: 16, weight: .semibold))
@@ -1998,9 +2042,12 @@ struct FileListView: View {
     // Filter files based on selected tab
     var filteredIndices: [Int] {
         // Researcher tab (6) shows both PDF and .bib files
+        // BibTeX tab (7) shows only .bib files
         // All other tabs show only PDFs
         if selectedTab == 6 {
             return Array(files.indices)
+        } else if selectedTab == 7 {
+            return files.indices.filter { files[$0].url.pathExtension.lowercased() == "bib" }
         } else {
             return files.indices.filter { files[$0].url.pathExtension.lowercased() == "pdf" }
         }
@@ -2064,6 +2111,8 @@ struct DropZoneView: View {
     var dropText: String {
         if selectedTab == 6 {
             return "Drop PDFs or .bib files here\nor click to browse"
+        } else if selectedTab == 7 {
+            return "Drop .bib files here\nor click to browse"
         } else {
             return "Drop PDFs here\nor click to browse"
         }
@@ -2140,8 +2189,8 @@ struct DropZoneView: View {
 
                     let ext = url.pathExtension.lowercased()
 
-                    // Only allow .bib files in Researcher tab (6)
-                    if ext == "bib" && selectedTab != 6 {
+                    // Only allow .bib files in Researcher tab (6) and BibTeX tab (7)
+                    if ext == "bib" && selectedTab != 6 && selectedTab != 7 {
                         return
                     }
 
@@ -4800,4 +4849,630 @@ struct RenamePreviewView: View {
         .padding()
         .frame(minWidth: 500)
     }
+}
+
+// MARK: - BibTeX Formatter Tab View
+struct BibTeXFormatterView: View {
+    @Binding var selectedFiles: [ContentView.PDFFile]
+    @Binding var outputText: String
+    @Binding var isProcessing: Bool
+    @AppStorage("isDarkMode_v2") private var isDarkMode = true
+    @AppStorage("shortenAuthors") private var shortenAuthors = false
+    @AppStorage("abbreviateJournals") private var abbreviateJournals = false
+    @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false
+    @State private var cleanBibTeX: Bool = true
+    @State private var removeDuplicates: Bool = true
+    @State private var sortEntries: Bool = false
+    @State private var showCitationPreview: Bool = false
+    @State private var selectedCitationStyle: CitationStyle = .apa
+
+    enum CitationStyle: String, CaseIterable, Identifiable {
+        case apa = "APA"
+        case mla = "MLA"
+        case chicago = "Chicago"
+        case harvard = "Harvard"
+        case ieee = "IEEE"
+
+        var id: String { rawValue }
+    }
+
+    // Raw preview of first 5 entries from files (before formatting)
+    var rawPreviewText: String {
+        guard !selectedFiles.isEmpty else { return "" }
+
+        var previewEntries: [String] = []
+        var count = 0
+
+        for file in selectedFiles where file.url.pathExtension.lowercased() == "bib" && count < 5 {
+            if let content = try? String(contentsOf: file.url, encoding: .utf8) {
+                let entries = parseBibTeXEntries(content)
+                for entry in entries.prefix(5 - count) {
+                    previewEntries.append(entry.content)
+                    count += 1
+                    if count >= 5 { break }
+                }
+            }
+            if count >= 5 { break }
+        }
+
+        if !previewEntries.isEmpty {
+            return "// Raw BibTeX (first 5 entries)\n// Click 'Format BibTeX Files' to apply formatting options\n\n" + previewEntries.joined(separator: "\n\n")
+        }
+        return ""
+    }
+
+    // Display text for output box (first 5 entries only)
+    var displayText: String {
+        if !outputText.isEmpty {
+            // Already formatted - show first 5 entries only
+            let entries = parseBibTeXEntries(outputText)
+            let first5 = entries.prefix(5)
+            let preview = first5.map { $0.content }.joined(separator: "\n\n")
+
+            if entries.count > 5 {
+                return preview + "\n\n// ... and \(entries.count - 5) more entries.\n// Click 'Save All' to export all \(entries.count) entries."
+            }
+            return preview
+        } else if !selectedFiles.isEmpty {
+            // Files loaded but not formatted yet - show raw preview
+            return rawPreviewText
+        } else {
+            return ""
+        }
+    }
+
+    // Generate citation preview (first 5 entries)
+    var citationPreviewText: String {
+        guard !outputText.isEmpty else { return "" }
+
+        let entries = parseBibTeXEntries(outputText)
+        let first5 = entries.prefix(5)
+        var citations: [String] = []
+
+        for (index, entry) in first5.enumerated() {
+            let citation = formatCitation(entry.content, style: selectedCitationStyle, index: index + 1)
+            citations.append(citation)
+        }
+
+        var result = citations.joined(separator: "\n\n")
+        if entries.count > 5 {
+            result += "\n\n// ... and \(entries.count - 5) more citations.\n// Click 'Save All Citations' to export all \(entries.count) citations."
+        }
+        return result
+    }
+
+    // Format a single BibTeX entry as a citation
+    func formatCitation(_ bibEntry: String, style: CitationStyle, index: Int) -> String {
+        // Extract basic fields
+        let author = extractField("author", from: bibEntry) ?? "Unknown Author"
+        let title = extractField("title", from: bibEntry) ?? "Untitled"
+        let year = extractField("year", from: bibEntry) ?? "n.d."
+        let journal = extractField("journal", from: bibEntry)
+        let volume = extractField("volume", from: bibEntry)
+        let pages = extractField("pages", from: bibEntry)
+
+        switch style {
+        case .apa:
+            var citation = "\(author) (\(year)). \(title)."
+            if let j = journal {
+                citation += " \(j)"
+                if let v = volume {
+                    citation += ", \(v)"
+                }
+                if let p = pages {
+                    citation += ", \(p)"
+                }
+                citation += "."
+            }
+            return citation
+
+        case .mla:
+            var citation = "\(author). \"\(title).\""
+            if let j = journal {
+                citation += " \(j)"
+                if let v = volume, let p = pages {
+                    citation += ", vol. \(v), \(year), pp. \(p)."
+                } else if let v = volume {
+                    citation += ", vol. \(v), \(year)."
+                } else {
+                    citation += ", \(year)."
+                }
+            }
+            return citation
+
+        case .chicago:
+            var citation = "\(author). \"\(title).\""
+            if let j = journal {
+                citation += " \(j)"
+                if let v = volume {
+                    citation += " \(v)"
+                }
+                if let p = pages {
+                    citation += " (\(year)): \(p)."
+                } else {
+                    citation += " (\(year))."
+                }
+            }
+            return citation
+
+        case .harvard:
+            var citation = "\(author) \(year), '\(title)'"
+            if let j = journal {
+                citation += ", \(j)"
+                if let v = volume, let p = pages {
+                    citation += ", vol. \(v), pp. \(p)."
+                } else {
+                    citation += "."
+                }
+            }
+            return citation
+
+        case .ieee:
+            var citation = "[\(index)] \(author), \"\(title),\""
+            if let j = journal {
+                citation += " \(j)"
+                if let v = volume, let p = pages {
+                    citation += ", vol. \(v), pp. \(p), \(year)."
+                } else if let v = volume {
+                    citation += ", vol. \(v), \(year)."
+                } else {
+                    citation += ", \(year)."
+                }
+            }
+            return citation
+        }
+    }
+
+    // Extract a field from BibTeX entry
+    func extractField(_ field: String, from bibEntry: String) -> String? {
+        let pattern = field + #"\s*=\s*\{([^}]+)\}"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: bibEntry, options: [], range: NSRange(bibEntry.startIndex..., in: bibEntry)),
+              let range = Range(match.range(at: 1), in: bibEntry) else {
+            return nil
+        }
+        return String(bibEntry[range])
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Header
+                HStack {
+                    Image(systemName: "text.book.closed.fill")
+                        .font(.title)
+                        .foregroundColor(.purple)
+                    Text("BibTeX Formatter")
+                        .font(.title)
+                        .bold()
+                    Spacer()
+                }
+                .padding(.horizontal)
+
+                // Info card
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                        Text("Drop .bib files to format and view")
+                            .font(.headline)
+                    }
+                    Text("This tab accepts BibTeX (.bib) files for formatting and viewing. Use the Researcher tab for extracting BibTeX from PDFs.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(isDarkMode ? Color(NSColor.controlBackgroundColor) : Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .padding(.horizontal)
+
+                // Formatting options
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Format Options")
+                        .font(.headline)
+                        .padding(.horizontal)
+
+                    VStack(spacing: 8) {
+                        Toggle(isOn: $shortenAuthors) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "person.2.fill")
+                                Text("Shorten Authors")
+                                    .font(.subheadline)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+
+                        Toggle(isOn: $abbreviateJournals) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "book.fill")
+                                Text("Abbreviate Journals")
+                                    .font(.subheadline)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+
+                        Toggle(isOn: $useLaTeXEscaping) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "textformat")
+                                Text("Use LaTeX Escaping")
+                                    .font(.subheadline)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        Toggle(isOn: $cleanBibTeX) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles")
+                                Text("Clean & Normalize")
+                                    .font(.subheadline)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+
+                        Toggle(isOn: $removeDuplicates) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "doc.on.doc.fill")
+                                Text("Remove Duplicates")
+                                    .font(.subheadline)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+
+                        Toggle(isOn: $sortEntries) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.arrow.down")
+                                Text("Sort by Year")
+                                    .font(.subheadline)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                    }
+                    .padding()
+                    .background(isDarkMode ? Color(NSColor.controlBackgroundColor) : Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
+                    .padding(.horizontal)
+                }
+
+                // Format and Reset buttons
+                HStack(spacing: 12) {
+                    Button(action: formatBibFiles) {
+                        HStack {
+                            if isProcessing {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "wand.and.stars")
+                            }
+                            Text(isProcessing ? "Formatting..." : "Format BibTeX Files")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                    .disabled(selectedFiles.isEmpty || isProcessing)
+
+                    Button(action: { outputText = "" }) {
+                        HStack {
+                            Image(systemName: "arrow.counterclockwise")
+                            Text("Reset")
+                        }
+                        .padding()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(outputText.isEmpty)
+                }
+                .padding(.horizontal)
+
+                // Output area - always visible
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(outputText.isEmpty && !selectedFiles.isEmpty ? "BibTeX Preview (first 5 entries)" : "Formatted BibTeX (first 5 entries)")
+                            .font(.headline)
+                        Spacer()
+
+                        Button(action: {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(displayText, forType: .string)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "doc.on.doc")
+                                Text("Copy")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(displayText.isEmpty)
+
+                        if !outputText.isEmpty {
+                            Button(action: saveBibTeXFile) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "square.and.arrow.down")
+                                    Text("Save All")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.purple)
+                        }
+                    }
+
+                    ScrollView {
+                        if displayText.isEmpty {
+                            Text("Drop .bib files to see preview")
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding()
+                        } else {
+                            Text(displayText)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        }
+                    }
+                    .frame(height: 400)
+                    .background(isDarkMode ? Color(NSColor.textBackgroundColor) : Color.white)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal)
+
+                // Citation Preview - show only AFTER formatting
+                if !outputText.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Citation Preview")
+                            .font(.headline)
+                            .padding(.horizontal)
+
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text("Style:")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Picker("", selection: $selectedCitationStyle) {
+                                    ForEach(CitationStyle.allCases) { style in
+                                        Text(style.rawValue).tag(style)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 120)
+
+                                Spacer()
+
+                                Button(action: { showCitationPreview.toggle() }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: showCitationPreview ? "eye.slash" : "eye")
+                                        Text(showCitationPreview ? "Hide" : "Show")
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                            if showCitationPreview {
+                                Divider()
+                                    .padding(.vertical, 4)
+
+                                HStack {
+                                    Spacer()
+                                    Button(action: {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(citationPreviewText, forType: .string)
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "doc.on.doc")
+                                            Text("Copy")
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+
+                                    Button(action: saveCitationsFile) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "square.and.arrow.down")
+                                            Text("Save All Citations")
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.orange)
+                                }
+                                .padding(.bottom, 4)
+
+                                ScrollView {
+                                    Text(citationPreviewText)
+                                        .font(.system(.body))
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(height: 250)
+                                .padding(12)
+                                .background(isDarkMode ? Color(NSColor.textBackgroundColor).opacity(0.5) : Color.white.opacity(0.5))
+                                .cornerRadius(6)
+                            }
+                        }
+                        .padding()
+                        .background(isDarkMode ? Color(NSColor.controlBackgroundColor) : Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(8)
+                        .padding(.horizontal)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.vertical)
+        }
+    }
+
+    private func formatBibFiles() {
+        isProcessing = true
+        outputText = ""
+
+        Task {
+            var combinedBib = ""
+            var allEntries: [BibEntry] = []
+
+            // Read and parse all files
+            for file in selectedFiles where file.url.pathExtension.lowercased() == "bib" {
+                do {
+                    let bibContent = try String(contentsOf: file.url, encoding: .utf8)
+                    let entries = parseBibTeXEntries(bibContent)
+                    allEntries.append(contentsOf: entries)
+                } catch {
+                    combinedBib += "// Error reading \(file.url.lastPathComponent): \(error.localizedDescription)\n\n"
+                }
+            }
+
+            // Remove duplicates if requested
+            if removeDuplicates {
+                allEntries = deduplicateBibEntries(allEntries)
+            }
+
+            // Sort entries if requested
+            if sortEntries {
+                allEntries.sort { entry1, entry2 in
+                    let year1 = extractYear(from: entry1.content)
+                    let year2 = extractYear(from: entry2.content)
+                    return year1 > year2 // Newest first
+                }
+            }
+
+            // Format each entry
+            let opts = BibTeXFormatOptions(
+                shortenAuthors: shortenAuthors,
+                abbreviateJournals: abbreviateJournals,
+                useLaTeXEscaping: useLaTeXEscaping
+            )
+
+            for entry in allEntries {
+                var formatted = entry.content
+
+                // Apply formatting options
+                formatted = reformatBibTeX(formatted, options: opts)
+                combinedBib += formatted + "\n\n"
+            }
+
+            // Clean if requested (removes abstract, keywords, url, etc.)
+            let shouldClean = self.cleanBibTeX
+            if shouldClean {
+                // Call the global cleanBibTeX function from PDFCompressor.swift
+                combinedBib = GhostPDF_.cleanBibTeX(combinedBib)
+            }
+
+            await MainActor.run {
+                let finalOutput = combinedBib.trimmingCharacters(in: .whitespacesAndNewlines)
+                outputText = finalOutput.isEmpty ? "No BibTeX entries found" : finalOutput
+                isProcessing = false
+            }
+        }
+    }
+
+    private struct BibEntry: Hashable {
+        let key: String
+        let content: String
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(key)
+        }
+
+        static func == (lhs: BibEntry, rhs: BibEntry) -> Bool {
+            lhs.key == rhs.key
+        }
+    }
+
+    private func parseBibTeXEntries(_ text: String) -> [BibEntry] {
+        var entries: [BibEntry] = []
+        let pattern = #"@\w+\{([^,]+),[\s\S]*?\n\}"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return entries
+        }
+
+        let matches = regex.matches(in: text, options: [], range: NSRange(text.startIndex..., in: text))
+
+        for match in matches {
+            if let fullRange = Range(match.range, in: text),
+               let keyRange = Range(match.range(at: 1), in: text) {
+                let content = String(text[fullRange])
+                let key = String(text[keyRange]).trimmingCharacters(in: .whitespaces)
+                entries.append(BibEntry(key: key, content: content))
+            }
+        }
+
+        return entries
+    }
+
+    private func deduplicateBibEntries(_ entries: [BibEntry]) -> [BibEntry] {
+        var seen = Set<String>()
+        var unique: [BibEntry] = []
+
+        for entry in entries {
+            let normalizedKey = entry.key.lowercased().trimmingCharacters(in: .whitespaces)
+            if !seen.contains(normalizedKey) {
+                seen.insert(normalizedKey)
+                unique.append(entry)
+            }
+        }
+
+        return unique
+    }
+
+    private func extractYear(from bibEntry: String) -> Int {
+        let yearPattern = #"year\s*=\s*\{?(\d{4})\}?"#
+        guard let regex = try? NSRegularExpression(pattern: yearPattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: bibEntry, options: [], range: NSRange(bibEntry.startIndex..., in: bibEntry)),
+              let yearRange = Range(match.range(at: 1), in: bibEntry) else {
+            return 0
+        }
+        return Int(String(bibEntry[yearRange])) ?? 0
+    }
+
+    // Save all BibTeX entries to file
+    private func saveBibTeXFile() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "formatted.bib"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try outputText.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                print("Error saving BibTeX: \(error)")
+            }
+        }
+    }
+
+    // Save all citations to file
+    private func saveCitationsFile() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "citations_\(selectedCitationStyle.rawValue.lowercased()).txt"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+
+            // Generate all citations, not just first 5
+            let entries = parseBibTeXEntries(outputText)
+            var allCitations: [String] = []
+
+            for (index, entry) in entries.enumerated() {
+                let citation = formatCitation(entry.content, style: selectedCitationStyle, index: index + 1)
+                allCitations.append(citation)
+            }
+
+            let fullText = allCitations.joined(separator: "\n\n")
+
+            do {
+                try fullText.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                print("Error saving citations: \(error)")
+            }
+        }
+    }
+
 }

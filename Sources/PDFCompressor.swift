@@ -3438,29 +3438,7 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
                     let authors = authorValue.components(separatedBy: " and ")
 
                     let shortenedAuthors = authors.map { author -> String in
-                        let trimmed = author.trimmingCharacters(in: .whitespaces)
-
-                        // Check if already shortened (has dots)
-                        if trimmed.contains(".") {
-                            return trimmed
-                        }
-
-                        // Format: "Family, Given" or "Given Family"
-                        let parts = trimmed.components(separatedBy: ",")
-                        if parts.count == 2 {
-                            // "Family, Given" format
-                            let family = parts[0].trimmingCharacters(in: .whitespaces)
-                            let given = parts[1].trimmingCharacters(in: .whitespaces)
-                            let initials = given.components(separatedBy: CharacterSet(charactersIn: " -")).map { String($0.prefix(1)) + "." }.joined(separator: " ")
-                            return "\(family), \(initials)"
-                        } else {
-                            // "Given Family" format
-                            let nameParts = trimmed.components(separatedBy: " ").filter { !$0.isEmpty }
-                            guard nameParts.count > 1 else { return trimmed }
-                            let family = nameParts.last!
-                            let initials = nameParts.dropLast().map { String($0.prefix(1)) + "." }.joined(separator: " ")
-                            return "\(family), \(initials)"
-                        }
+                        return formatAuthorName(author.trimmingCharacters(in: .whitespaces))
                     }
 
                     modifiedEntry = modifiedEntry.replacingOccurrences(
