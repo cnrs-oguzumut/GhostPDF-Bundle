@@ -219,8 +219,8 @@ struct ContentView: View {
                         savedResearcherOutput = researcherOutputText
                         researcherOutputText = ""
 
-                        // Clear files and status
-                        selectedFiles.removeAll()
+                        // Don't remove files - filtering will hide .bib files in other tabs
+                        // selectedFiles remain unchanged so .bib files persist
                         statusMessage = ""
                         totalProgress = 0
                         currentFileIndex = 0
@@ -1883,7 +1883,12 @@ struct ContentView: View {
 
     @ViewBuilder
     private var fileListArea: some View {
-        if selectedFiles.isEmpty {
+        // Check if there are visible files after filtering
+        let visibleFiles = selectedTab == 6 
+            ? selectedFiles  // Research tab: show all files
+            : selectedFiles.filter { $0.url.pathExtension.lowercased() == "pdf" }  // Other tabs: only PDFs
+        
+        if visibleFiles.isEmpty {
             DropZoneView(selectedFiles: $selectedFiles, selectedTab: selectedTab)
                 .padding(.horizontal, 24)
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
