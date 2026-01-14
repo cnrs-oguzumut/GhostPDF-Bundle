@@ -4061,6 +4061,14 @@ struct ResearcherTabView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .disabled(isProcessing)
+
+                                Button(action: {
+                                    activeAction = nil
+                                }) {
+                                    Text("Cancel Changes")
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(isProcessing)
                             }
                         }
                         .padding(12)
@@ -4894,8 +4902,11 @@ struct ResearcherTabView: View {
         
         // Call backend function
         if let bib = await fetchBibTeXFromCrossRef(doi: trimmedDOI) {
+            // Apply default reformatting to clean up MathML/tags using defaults
+            let cleanBib = reformatBibTeX(bib, options: BibTeXFormatOptions())
+            
             await MainActor.run {
-                outputText = bib
+                outputText = cleanBib
                 isProcessing = false
             }
         } else {

@@ -3490,8 +3490,20 @@ func fetchBibTeXFromCrossRef(doi: String) async -> String? {
 
 /// Reformat existing BibTeX entries with new formatting options
 func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> String {
+    // 1. Global Cleanup (Normalization & Tag Stripping)
+    var cleanedText = bibtexText
+        .replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+    
+    // Clean MathML and XML tags GLOBALLY
+    // Example: <mml:math ...><mml:mi>A</mml:mi>...</mml:math> -> A
+    cleanedText = cleanedText.replacingOccurrences(of: "</?mml:[^>]+>", with: "", options: [.regularExpression, .caseInsensitive])
+    cleanedText = cleanedText.replacingOccurrences(of: "</?math[^>]*>", with: "", options: [.regularExpression, .caseInsensitive])
+    cleanedText = cleanedText.replacingOccurrences(of: "−", with: "-") // U+2212 -> Hyphen
+    cleanedText = cleanedText.replacingOccurrences(of: "&amp;", with: "&")
+
     // Split into individual entries
-    let entries = bibtexText.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    let entries = cleanedText.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var reformattedEntries: [String] = []
 
