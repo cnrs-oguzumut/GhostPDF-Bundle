@@ -135,6 +135,8 @@ struct ContentView: View {
     @AppStorage("abbreviateJournals") private var abbreviateJournals = false
     @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
     @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false
+    @AppStorage("addDotsToInitials") private var addDotsToInitials = true
+    @AppStorage("addDotsToJournals") private var addDotsToJournals = true
     
     struct PDFFile: Identifiable, Equatable {
         let id = UUID()
@@ -3871,6 +3873,8 @@ struct ResearcherTabView: View {
     @AppStorage("shortenAuthors") private var shortenAuthors = false  // NEW
     @AppStorage("abbreviateJournals") private var abbreviateJournals = false // NEW
     @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false // NEW
+    @AppStorage("addDotsToInitials") private var addDotsToInitials = true // NEW
+    @AppStorage("addDotsToJournals") private var addDotsToJournals = true // NEW
     @StateObject private var networkMonitor = NetworkMonitor()
 
     @State private var activeAction: ResearcherAction? = nil
@@ -4175,14 +4179,8 @@ struct ResearcherTabView: View {
                                     .tint(.green)
                                     .font(.caption)
                                     .help("Remove unnecessary fields (abstract, language, etc.), clean braces in names, and remove duplicates")
-                                    
-                                    Button(action: reformatOutput) {
-                                        Label("Reformat", systemImage: "textformat")
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(.orange)
-                                    .font(.caption)
-                                    .help("Apply current formatting options to extracted entries")
+                                    // Legacy formatting buttons removed
+
 
                                     Button(action: exportBibFile) {
                                         Label("Save .bib", systemImage: "square.and.arrow.down")
@@ -4197,34 +4195,86 @@ struct ResearcherTabView: View {
                         }
 
                         // Formatting options - show whenever output is generated (BibTeX or References)
+                        // Formatting Controls
                         if !outputText.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Formatting Options")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.secondary)
-
-                                HStack(spacing: 16) {
-                                    Toggle("Shorten Authors", isOn: $shortenAuthors)
+                            GroupBox {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Formatting Operations")
                                         .font(.caption)
-
-                                    Toggle("Abbreviate Journals", isOn: $abbreviateJournals)
-                                        .font(.caption)
-
-                                    Toggle("LaTeX Escaping", isOn: $useLaTeXEscaping)
-                                        .font(.caption)
-                                        .help("Escape special characters like 'Moës' as 'Mo{\\\"e}s' for traditional BibTeX compatibility")
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.secondary)
+                                    
+                                    HStack(alignment: .top, spacing: 20) {
+                                        // Authors Group
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text("Authors")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                            
+                                            HStack(spacing: 8) {
+                                                Button(action: applyStandardAuthorFormat) {
+                                                    Text("Standard (O. U. Salman)")
+                                                        .font(.caption)
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .help("Reformat authors with dots: O. U. Salman")
+                                                
+                                                Button(action: applyMinimalistAuthorFormat) {
+                                                    Text("Minimalist (O U Salman)")
+                                                        .font(.caption)
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .help("Reformat authors without dots: O U Salman")
+                                            }
+                                        }
+                                        
+                                        Divider()
+                                        
+                                        // Journals Group
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text("Journals")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                            
+                                            HStack(spacing: 8) {
+                                                Button(action: applyStandardJournalFormat) {
+                                                    Text("Standard (Phys. Rev.)")
+                                                        .font(.caption)
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .help("Abbreviate journals with dots: Phys. Rev.")
+                                                
+                                                Button(action: applyMinimalistJournalFormat) {
+                                                    Text("Minimalist (Phys Rev)")
+                                                        .font(.caption)
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .help("Abbreviate journals without dots: Phys Rev")
+                                            }
+                                        }
+                                        
+                                        Divider()
+                                        
+                                        // LaTeX Group
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text("LaTeX")
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
+                                            
+                                            Button(action: applyLatexEscaping) {
+                                                Label("Escape Special Chars", systemImage: "character.cursor.ibeam")
+                                                    .font(.caption)
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .help("Apply LaTeX escaping to special characters")
+                                        }
+                                    }
                                 }
-
-                                Text("Toggle options above and click 'Reformat' to apply changes")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
+                                .padding(4)
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-                            .cornerRadius(6)
+                            .padding(.bottom, 4)
                         }
+
 
                         ZStack(alignment: .topTrailing) {
                             if outputText.isEmpty {
@@ -4238,16 +4288,11 @@ struct ResearcherTabView: View {
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 280)
                             } else {
-                                ScrollView {
-                                    Text(getPreviewText())
-                                        .textSelection(.enabled)
-                                        .font(.system(.body, design: .monospaced))
-                                        .lineSpacing(4)
-                                        .padding()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .id(outputText.hashValue) // Force refresh when content changes
-                                .frame(minHeight: 280)
+                                TextEditor(text: $outputText)
+                                    .font(.system(.body, design: .monospaced))
+                                    .lineSpacing(4)
+                                    .padding(4)
+                                    .frame(minHeight: 280, maxHeight: 400) // Constrained height with native scrolling
                                 
                                 Button(action: {
                                     NSPasteboard.general.clearContents()
@@ -4565,7 +4610,9 @@ struct ResearcherTabView: View {
                          // But existing entries in `preservedOutput` might not be in the same format as `allReferences`.
                          
                          // Setup for merging:
-                         let separator = "\n\n"
+                         // Setup for merging:
+                         // let separator = "\n\n" // Unused
+
                          // var finalOutput = preservedOutput + separator + allReferences.joined(separator: separator) // Unused
                          
                          // Try to split preserved output more robustly?
@@ -4688,15 +4735,54 @@ struct ResearcherTabView: View {
         }
     }
 
-    private func reformatOutput() {
-        guard !outputText.isEmpty else { return }
-                let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
-        do {
-            outputText = reformatBibTeX(outputText, options: opts)
-        } catch {
-            print("Error reformatting: \(error)")
-        }
+    // MARK: - Formatting Helpers
+    
+    private func applyStandardAuthorFormat() {
+        // Author Action: Process Authors (True), Skip Journals (false to avoid side effects)
+        let opts = BibTeXFormatOptions(shortenAuthors: true, abbreviateJournals: false, useLaTeXEscaping: self.useLaTeXEscaping, addDotsToInitials: true, addDotsToJournals: self.addDotsToJournals, processAuthors: true)
+        outputText = reformatBibTeX(outputText, options: opts)
+        
+        self.shortenAuthors = true
+        self.addDotsToInitials = true
     }
+
+    private func applyMinimalistAuthorFormat() {
+        // Author Action: Process Authors (True), Skip Journals
+        let opts = BibTeXFormatOptions(shortenAuthors: true, abbreviateJournals: false, useLaTeXEscaping: self.useLaTeXEscaping, addDotsToInitials: false, addDotsToJournals: self.addDotsToJournals, processAuthors: true)
+        outputText = reformatBibTeX(outputText, options: opts)
+        
+        self.shortenAuthors = true
+        self.addDotsToInitials = false
+    }
+
+    private func applyStandardJournalFormat() {
+        // Journal Action: Process Journals (True), Skip Authors (False to avoid side effects)
+        let opts = BibTeXFormatOptions(shortenAuthors: self.shortenAuthors, abbreviateJournals: true, useLaTeXEscaping: self.useLaTeXEscaping, addDotsToInitials: self.addDotsToInitials, addDotsToJournals: true, processAuthors: false)
+        outputText = reformatBibTeX(outputText, options: opts)
+        
+        self.abbreviateJournals = true
+        self.addDotsToJournals = true
+    }
+
+    private func applyMinimalistJournalFormat() {
+        // Journal Action: Process Journals (True), Skip Authors
+        let opts = BibTeXFormatOptions(shortenAuthors: self.shortenAuthors, abbreviateJournals: true, useLaTeXEscaping: self.useLaTeXEscaping, addDotsToInitials: self.addDotsToInitials, addDotsToJournals: false, processAuthors: false)
+        outputText = reformatBibTeX(outputText, options: opts)
+        
+        self.abbreviateJournals = true
+        self.addDotsToJournals = false
+    }
+
+    private func applyLatexEscaping() {
+        // LaTeX Action: Apply escaping, but don't reformat authors/journals structure
+        let opts = BibTeXFormatOptions(shortenAuthors: self.shortenAuthors, abbreviateJournals: self.abbreviateJournals, useLaTeXEscaping: true, addDotsToInitials: self.addDotsToInitials, addDotsToJournals: self.addDotsToJournals, processAuthors: false)
+        outputText = reformatBibTeX(outputText, options: opts)
+        self.useLaTeXEscaping = true
+    }
+
+
+
+
 
     private func cleanOutput() {
         guard !outputText.isEmpty else { return }

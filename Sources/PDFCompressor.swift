@@ -434,6 +434,9 @@ struct BibTeXFormatOptions {
     var shortenAuthors: Bool = false
     var abbreviateJournals: Bool = false
     var useLaTeXEscaping: Bool = false
+    var addDotsToInitials: Bool = true // Default to true (Gong, L.)
+    var addDotsToJournals: Bool = true // Default to true (Phys. Rev. Lett.)
+    var processAuthors: Bool = true // Guard to skip author processing entirely
 }
 
 /// Extract BibTeX metadata from PDF with optional online lookup
@@ -2967,6 +2970,8 @@ private let JOURNAL_ABBREV: [String: String] = [
     "Comptes rendus. Physique": "C. R. Phys.",
     "Reports on Progress in Physics": "Rep. Prog. Phys.",
     "New Journal of Physics": "New J. Phys.",
+    "Journal of Statistical Mechanics: Theory and Experiment": "J. Stat. Mech.",
+    "Frontiers in Physics": "Front. Phys.",
 
     // Nature/Science Family
     "Nature": "Nature",
@@ -3064,10 +3069,20 @@ private func formatJournalName(_ name: String) -> String {
     let clean = name.replacingOccurrences(of: "[{}]", with: "", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
-    // Try exact match first (case-insensitive)
+    // 1. Try exact match with Full Name (case-insensitive)
     for (fullName, abbrev) in JOURNAL_ABBREV {
         if fullName.lowercased() == clean.lowercased() {
             return abbrev
+        }
+    }
+    
+    // 2. Try matching against existing Abbreviations (support reversibility: No Dots -> Dots)
+    // If input is "Phys Rev Mater", check if we have a known abbreviation "Phys. Rev. Mater."
+    let cleanNoDots = clean.replacingOccurrences(of: ".", with: "")
+    for (_, abbrev) in JOURNAL_ABBREV {
+        let abbrevNoDots = abbrev.replacingOccurrences(of: ".", with: "")
+        if abbrevNoDots.lowercased() == cleanNoDots.lowercased() {
+             return abbrev
         }
     }
 
@@ -3138,12 +3153,28 @@ private func formatAuthorName(_ name: String) -> String {
         }
     }
 
-    // Handle "First Middle Last" format
+    // Handle "First Middle Last" format (space separated)
     let parts = author.components(separatedBy: " ").filter { !$0.isEmpty }
     if parts.isEmpty { return "" }
     if parts.count == 1 { return parts[0] }
 
-    // Convert all but last name to initials
+    // Ambiguity Heuristic: Check for "Surname Initial" format (missing comma)
+    // Entry: "Author E." -> parts=["Author", "E."]
+    // If Part 0 looks like a Surname (>2 chars) and Part Last looks like an Initial (1 char or "X."),
+    // Then assume Surname-First order.
+    if parts.count == 2 {
+        let first = parts[0]
+        let last = parts[1]
+        let lastIsInitial = (last.count == 1) || (last.count == 2 && last.hasSuffix("."))
+        let firstIsName = first.replacingOccurrences(of: ".", with: "").count > 2 // Ensure it's not just "A. B."
+        
+        if lastIsInitial && firstIsName {
+            // Treat as "Surname Initial" -> "Initial. Surname"
+            return "\(getInitials(last)) \(first)"
+        }
+    }
+
+    // Convert all but last name to initials (Standard Assumed Order: First... Last)
     let lastName = parts.last!
     let firstNames = parts.dropLast().joined(separator: " ")
     return "\(getInitials(firstNames)) \(lastName)"
@@ -3584,8 +3615,9 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
             continue
         }
 
-        // Apply author shortening
-        if options.shortenAuthors {
+        // 1. Apply author shortening first (Canonicalize to 'Initials. Lastname')
+        // GUARD: Only process if both processAuthors AND shortenAuthors are true
+        if options.processAuthors && options.shortenAuthors {
             // Match author field: author = {Name1, Given1 and Name2, Given2}
             let authorPattern = #"author\s*=\s*\{([^}]+)\}"#
             if let regex = try? NSRegularExpression(pattern: authorPattern, options: []),
@@ -3603,6 +3635,85 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
                         of: authorValue,
                         with: shortenedAuthors.joined(separator: " and ")
                     )
+                }
+            }
+        }
+
+        // 2. Apply ALL CAPS normalization and Dot Management (Add/Remove)
+        // This must happen AFTER shortening to ensure we enforce the user's dot preference
+        // (Shortening resets to dotted format, so we must potentially remove dots afterwards)
+        // GUARD: Only process authors if requested
+        if options.processAuthors {
+            let capsPattern = #"author\s*=\s*\{([^}]+)\}"#
+            if let regex = try? NSRegularExpression(pattern: capsPattern, options: .caseInsensitive) {
+                let nsString = modifiedEntry as NSString
+                if let match = regex.firstMatch(in: modifiedEntry, options: [], range: NSRange(location: 0, length: nsString.length)) {
+                    let authors = nsString.substring(with: match.range(at: 1))
+                    
+                    // Only normalize if it looks like ALL CAPS (ignore "and", "AND", spaces, punctuation)
+                    // We remove "and" (case insensitive) before checking if everything else is uppercase
+                    let textForCheck = authors.replacingOccurrences(of: " and ", with: "", options: .caseInsensitive)
+                    let lettersOnly = textForCheck.components(separatedBy: CharacterSet.letters.inverted).joined()
+                    let isAllCaps = !lettersOnly.isEmpty && lettersOnly == lettersOnly.uppercased()
+                    
+                    var normalized = authors
+                    
+                    if isAllCaps {
+                        normalized = authors.capitalized // "GONG, L" -> "Gong, L"
+                            .replacingOccurrences(of: " And ", with: " and ") // Fix " and "
+                    }
+                    
+                    if options.addDotsToInitials {
+                        // Add dots to single initials (e.g., "Gong, L" -> "Gong, L.")
+                        let initialPattern = #"(^|[\s,])([A-Z])(?=$|[\s,])"#
+                        if let initialRegex = try? NSRegularExpression(pattern: initialPattern, options: []) {
+                            let range = NSRange(location: 0, length: normalized.count)
+                            normalized = initialRegex.stringByReplacingMatches(
+                                in: normalized,
+                                options: [],
+                                range: range,
+                                withTemplate: "$1$2."
+                            )
+                        }
+                    } else {
+                        // REMOVE dots from single initials (e.g. "Gong, L." -> "Gong, L")
+                        // 1. Separate condensed initials first: "N.P." -> "N. P." to ensure "N P" later
+                        //    Match a letter-dot followed immediately by another letter
+                        let splitPattern = #"([A-Z])\.([A-Z])"#
+                        if let splitRegex = try? NSRegularExpression(pattern: splitPattern, options: []) {
+                             let range = NSRange(location: 0, length: normalized.count)
+                             normalized = splitRegex.stringByReplacingMatches(
+                                 in: normalized,
+                                 options: [],
+                                 range: range,
+                                 withTemplate: "$1. $2"
+                             )
+                             // Run twice to handle N.P.Q. -> N. P.Q. -> N. P. Q.
+                             let range2 = NSRange(location: 0, length: normalized.count)
+                             normalized = splitRegex.stringByReplacingMatches(
+                                 in: normalized,
+                                 options: [],
+                                 range: range2,
+                                 withTemplate: "$1. $2"
+                             )
+                        }
+
+                        // 2. Remove dots: Match ANY Uppercase Letter followed by a dot (e.g. "K. Salman" -> "K Salman")
+                        let dotPattern = #"([A-Z])\."#
+                        if let dotRegex = try? NSRegularExpression(pattern: dotPattern, options: []) {
+                             let range = NSRange(location: 0, length: normalized.count)
+                             normalized = dotRegex.stringByReplacingMatches(
+                                 in: normalized,
+                                 options: [],
+                                 range: range,
+                                 withTemplate: "$1"
+                             )
+                        }
+                    }
+                    
+                    if normalized != authors {
+                        modifiedEntry = modifiedEntry.replacingOccurrences(of: authors, with: normalized)
+                    }
                 }
             }
         }
@@ -3639,7 +3750,13 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
 
                     if depth == 0 && pos < nsString.length {
                         let content = nsString.substring(with: NSRange(location: contentStart, length: pos - contentStart))
-                        let abbreviated = formatJournalName(content)
+                        var abbreviated = formatJournalName(content)
+                        
+                        // Remove dots if requested (e.g. "Phys. Rev. Lett." -> "Phys Rev Lett")
+                        if !options.addDotsToJournals {
+                            abbreviated = abbreviated.replacingOccurrences(of: ".", with: "")
+                        }
+                        
                         let endIndex = pos + 1
                         replacements.append((start: start, end: endIndex, text: "journal = {\(abbreviated)}"))
                     }
@@ -3708,7 +3825,7 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
 ///   - bibtexText: The raw BibTeX text to clean
 ///   - fieldsToRemove: Set of field names to remove (default includes abstract, language, etc.)
 /// - Returns: Cleaned BibTeX string
-func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil) -> String {
+func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil, options: BibTeXFormatOptions = BibTeXFormatOptions()) -> String {
     // Default fields to remove (commonly unnecessary for citations)
     let defaultFieldsToRemove: Set<String> = [
         "abstract", "keywords", "url", "urldate", "note", "annotation",
@@ -3727,7 +3844,85 @@ func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil) -> St
     var cleanedEntries: [String] = []
     var seenKeys: Set<String> = []  // For duplicate detection
     
-    for rawEntry in rawEntries {
+    for var rawEntry in rawEntries {
+        // Normalize ALL CAPS authors (e.g. "GONG, L" -> "Gong, L")
+        let capsPattern = #"author\s*=\s*\{([^}]+)\}"#
+        if let regex = try? NSRegularExpression(pattern: capsPattern, options: .caseInsensitive) {
+            let nsString = rawEntry as NSString
+            if let match = regex.firstMatch(in: rawEntry, options: [], range: NSRange(location: 0, length: nsString.length)) {
+                let authors = nsString.substring(with: match.range(at: 1))
+                
+                print("DEBUG - Checking authors for ALL CAPS: '\(authors)'")
+                
+                // Only normalize if it looks like ALL CAPS (ignore "and", "AND", spaces, punctuation)
+                // We remove "and" (case insensitive) before checking if everything else is uppercase
+                let textForCheck = authors.replacingOccurrences(of: " and ", with: "", options: .caseInsensitive)
+                let lettersOnly = textForCheck.components(separatedBy: CharacterSet.letters.inverted).joined()
+                let isAllCaps = !lettersOnly.isEmpty && lettersOnly == lettersOnly.uppercased()
+                
+                print("DEBUG - Is All Caps: \(isAllCaps) (letters: '\(lettersOnly)')")
+                
+                var normalized = authors
+                
+                if isAllCaps {
+                    normalized = authors.capitalized // "GONG, L" -> "Gong, L"
+                        .replacingOccurrences(of: " And ", with: " and ") // Fix " and "
+                }
+                
+                if options.addDotsToInitials {
+                    // Add dots to single initials (e.g., "Gong, L" -> "Gong, L.")
+                    let initialPattern = #"(^|[\s,])([A-Z])(?=$|[\s,])"#
+                    if let initialRegex = try? NSRegularExpression(pattern: initialPattern, options: []) {
+                        let range = NSRange(location: 0, length: normalized.count)
+                        normalized = initialRegex.stringByReplacingMatches(
+                            in: normalized,
+                            options: [],
+                            range: range,
+                            withTemplate: "$1$2."
+                        )
+                    }
+                } else {
+                    // REMOVE dots from single initials (e.g. "Gong, L." -> "Gong, L")
+                    // 1. Separate condensed initials first: "N.P." -> "N. P." to ensure "N P" later
+                    //    Match a letter-dot followed immediately by another letter
+                    let splitPattern = #"([A-Z])\.([A-Z])"#
+                    if let splitRegex = try? NSRegularExpression(pattern: splitPattern, options: []) {
+                         let range = NSRange(location: 0, length: normalized.count)
+                         normalized = splitRegex.stringByReplacingMatches(
+                             in: normalized,
+                             options: [],
+                             range: range,
+                             withTemplate: "$1. $2"
+                         )
+                         // Run twice to handle N.P.Q. -> N. P.Q. -> N. P. Q.
+                         let range2 = NSRange(location: 0, length: normalized.count)
+                         normalized = splitRegex.stringByReplacingMatches(
+                             in: normalized,
+                             options: [],
+                             range: range2,
+                             withTemplate: "$1. $2"
+                         )
+                    }
+
+                    // 2. Remove dots: Match ANY Uppercase Letter followed by a dot (e.g. "K. Salman" -> "K Salman")
+                    let dotPattern = #"([A-Z])\."#
+                    if let dotRegex = try? NSRegularExpression(pattern: dotPattern, options: []) {
+                         let range = NSRange(location: 0, length: normalized.count)
+                         normalized = dotRegex.stringByReplacingMatches(
+                             in: normalized,
+                             options: [],
+                             range: range,
+                             withTemplate: "$1"
+                         )
+                    }
+                }
+                
+                if normalized != authors {
+                    print("DEBUG - Normalizing authors: '\(authors)' -> '\(normalized)'")
+                    rawEntry = rawEntry.replacingOccurrences(of: authors, with: normalized)
+                }
+            }
+        }
         let entry = rawEntry.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // Skip comments

@@ -8,7 +8,7 @@ set -e
 # Configuration
 APP_NAME="GhostPDF+"
 BUNDLE_ID="com.ghostpdf.app"
-VERSION="2.5"
+VERSION="2.6"
 BUILD_NUMBER="1"
 DIST_DIR="dist"
 
