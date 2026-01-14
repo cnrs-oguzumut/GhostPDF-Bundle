@@ -550,18 +550,21 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
             // Try Semantic Scholar
             print("DEBUG - extractBibTeX: Trying Semantic Scholar for title: '\(title)'")
             if let ssBib = await querySemanticScholar(title, originalContext: nil, options: options) {
-                return ssBib
+                return reformatBibTeX(ssBib, options: options)
             }
             
             // Try OpenLibrary (for books)
             print("DEBUG - extractBibTeX: Trying OpenLibrary for title: '\(title)'")
             if let olBib = await queryOpenLibrary(title, options: options) {
-                return olBib
+                return reformatBibTeX(olBib, options: options)
             }
         }
     }
 
-    return offlineBib
+    if let off = offlineBib {
+        return reformatBibTeX(off, options: options)
+    }
+    return nil
 }
 
 /// Extract BibTeX metadata from PDF (offline version)
@@ -3733,6 +3736,16 @@ func reformatBibTeX(_ bibtexText: String, options: BibTeXFormatOptions) -> Strin
 ///   - fieldsToRemove: Set of field names to remove (default includes abstract, language, etc.)
 /// - Returns: Cleaned BibTeX string
 func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil, options: BibTeXFormatOptions = BibTeXFormatOptions()) -> String {
+    // 1. Global Cleanup (Normalization & Tag Stripping)
+    var cleanedGlobal = bibtexText
+        .replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+    
+    // Clean MathML and XML tags GLOBALLY
+    cleanedGlobal = cleanedGlobal.replacingOccurrences(of: "</?mml:[^>]+>", with: "", options: [.regularExpression, .caseInsensitive])
+    cleanedGlobal = cleanedGlobal.replacingOccurrences(of: "</?math[^>]*>", with: "", options: [.regularExpression, .caseInsensitive])
+    cleanedGlobal = cleanedGlobal.replacingOccurrences(of: "−", with: "-") // U+2212 -> Hyphen
+    cleanedGlobal = cleanedGlobal.replacingOccurrences(of: "&amp;", with: "&")
     // Default fields to remove (commonly unnecessary for citations)
     let defaultFieldsToRemove: Set<String> = [
         "abstract", "keywords", "url", "urldate", "note", "annotation",
@@ -3744,8 +3757,9 @@ func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil, optio
     
     let fieldsToClean = fieldsToRemove ?? defaultFieldsToRemove
     
+    
     // Split into entries, tracking which are BibTeX vs comments
-    let rawEntries = bibtexText.components(separatedBy: "\n\n")
+    let rawEntries = cleanedGlobal.components(separatedBy: "\n\n")
         .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     
     var cleanedEntries: [String] = []
