@@ -4211,7 +4211,7 @@ struct ResearcherTabView: View {
                         color: .orange,
                         isActive: activeAction == .references,
                         isProcessing: isProcessing && activeAction == .references,
-                        isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty || !allowOnlineLookup
+                        isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
                     ) {
                         activeAction = .references
                         extractReferencesAction()
@@ -4715,7 +4715,7 @@ struct ResearcherTabView: View {
                     }
                 } else {
                     // Handle PDF
-                    let references = await extractReferences(url: file.url, options: opts, isCancelledCheck: { [self] in
+                    let references = await extractReferences(url: file.url, options: opts, allowOnline: allowOnlineLookup, isCancelledCheck: { [self] in
                         return isCancelled
                     }) { current, total in
                         // Update progress on main thread

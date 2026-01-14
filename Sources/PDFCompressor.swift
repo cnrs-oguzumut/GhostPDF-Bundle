@@ -118,6 +118,124 @@ func buildBibTeXFromAIMetadata(_ meta: AIExtractedMetadata, fallbackDOI: String,
     return bib
 }
 
+// MARK: - AI-Powered Reference Extraction
+
+/// Struct for a single extracted reference
+@available(macOS 26.0, *)
+@Generable
+struct AIExtractedReference {
+    @Guide(description: "List of author names for this reference. Format: 'FirstName LastName' or 'F. LastName'")
+    let authors: [String]
+    
+    @Guide(description: "The title of the referenced work.")
+    let title: String
+    
+    @Guide(description: "The journal, conference, or book name.")
+    let journal: String
+    
+    @Guide(description: "The publication year as a 4-digit number.")
+    let year: Int
+    
+    @Guide(description: "The volume number if available, empty string otherwise.")
+    let volume: String
+    
+    @Guide(description: "The page range (e.g., '123-145') if available, empty string otherwise.")
+    let pages: String
+    
+    @Guide(description: "The DOI if present in the reference, empty string otherwise.")
+    let doi: String
+}
+
+/// Container for multiple references extracted by AI
+@available(macOS 26.0, *)
+@Generable
+struct AIExtractedReferences {
+    @Guide(description: "List of all bibliographic references extracted from the text. Each reference should be parsed into its components.")
+    let references: [AIExtractedReference]
+}
+
+/// Extract references from PDF text using Apple Foundation Models (macOS 26+)
+@available(macOS 26.0, *)
+func extractReferencesWithAI(from text: String, options: BibTeXFormatOptions) async -> [String]? {
+    do {
+        // Limit text - references section is usually at the end
+        // Take last 15000 chars to capture references section
+        let limitedText: String
+        if text.count > 15000 {
+            limitedText = String(text.suffix(15000))
+        } else {
+            limitedText = text
+        }
+        
+        let prompt = """
+        Extract all bibliographic references from this academic paper text.
+        The references section is usually at the end of the paper.
+        Parse each reference into its components: authors, title, journal, year, volume, pages, and DOI.
+        
+        Document text:
+        \(limitedText)
+        """
+        
+        print("DEBUG - extractReferencesWithAI: Creating session...")
+        let session = LanguageModelSession()
+        print("DEBUG - extractReferencesWithAI: Calling respond with structured output...")
+        let response = try await session.respond(to: prompt, generating: AIExtractedReferences.self)
+        print("DEBUG - extractReferencesWithAI: Success! Got \(response.content.references.count) references.")
+        
+        // Convert to BibTeX format
+        var bibTexEntries: [String] = []
+        for (index, ref) in response.content.references.enumerated() {
+            let bib = formatReferenceToBibTeX(ref, index: index + 1, options: options)
+            bibTexEntries.append(bib)
+        }
+        
+        return bibTexEntries
+    } catch {
+        print("AI reference extraction failed: \(error)")
+        return nil
+    }
+}
+
+/// Format a single AI-extracted reference to BibTeX
+@available(macOS 26.0, *)
+private func formatReferenceToBibTeX(_ ref: AIExtractedReference, index: Int, options: BibTeXFormatOptions) -> String {
+    // Format authors
+    var authorsForBib: String
+    if ref.authors.isEmpty {
+        authorsForBib = "Unknown Author"
+    } else if options.shortenAuthors {
+        authorsForBib = ref.authors.map { formatAuthorName($0) }.joined(separator: " and ")
+    } else {
+        authorsForBib = ref.authors.joined(separator: " and ")
+    }
+    
+    // Format journal if needed
+    var journalForBib = ref.journal
+    if options.abbreviateJournals {
+        journalForBib = formatJournalName(journalForBib)
+    }
+    
+    // Generate citation key
+    let authorLast = ref.authors.first?.components(separatedBy: " ").last?.filter { $0.isLetter } ?? "ref"
+    let cleanAuthorKey = authorLast.folding(options: .diacriticInsensitive, locale: .current).lowercased()
+    let citeKey = "\(cleanAuthorKey)\(ref.year)ref\(index)"
+    
+    // Build BibTeX entry
+    var bib = "@article{\(citeKey),\n"
+    bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(authorsForBib) : authorsForBib)},\n"
+    bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(ref.title) : ref.title)},\n"
+    bib += "    year = {\(ref.year)},\n"
+    bib += "    journal = {\(options.useLaTeXEscaping ? latexEscaped(journalForBib) : journalForBib)}"
+    
+    if !ref.volume.isEmpty { bib += ",\n    volume = {\(ref.volume)}" }
+    if !ref.pages.isEmpty { bib += ",\n    pages = {\(ref.pages)}" }
+    if !ref.doi.isEmpty { bib += ",\n    doi = {\(ref.doi)}" }
+    
+    bib += "\n}"
+    
+    return bib
+}
+
 // Helper for Image Extraction
 class ImageExtractionContext {
     let outputDir: URL
@@ -2299,6 +2417,29 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
              print("DEBUG - Failed to fetch references from CrossRef (or list empty). Falling back to text parsing.")
         }
 
+    }
+    
+    // Try AI-powered extraction (macOS 26+) before heuristic parsing
+    if #available(macOS 26.0, *) {
+        // Extract full text from PDF
+        var fullText = ""
+        for i in 0..<doc.pageCount {
+            if let page = doc.page(at: i), let pageText = page.string {
+                fullText += pageText + "\n\n"
+            }
+        }
+        
+        if !fullText.isEmpty {
+            print("DEBUG - Attempting AI-powered reference extraction...")
+            if let aiRefs = await extractReferencesWithAI(from: fullText, options: options) {
+                print("DEBUG - AI extraction successful! Got \(aiRefs.count) references.")
+                return aiRefs
+            } else {
+                print("DEBUG - AI reference extraction failed, falling back to heuristic parsing.")
+            }
+        }
+    } else {
+        print("DEBUG - macOS < 26, using heuristic reference extraction")
     }
 
 
