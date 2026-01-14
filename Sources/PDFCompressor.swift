@@ -5,7 +5,118 @@ import UniformTypeIdentifiers
 import CoreGraphics
 import ImageIO
 import NaturalLanguage
+import FoundationModels
 
+// MARK: - AI-Powered Metadata Extraction Models
+
+@available(macOS 26.0, *)
+@Generable
+struct AIExtractedMetadata {
+    @Guide(description: "The full title of the academic paper, exactly as it appears in the document.")
+    let title: String
+
+    @Guide(description: "List of all authors in order, with full names. Format: 'FirstName LastName' or 'F. LastName'")
+    let authors: [String]
+
+    @Guide(description: "The journal, conference, or publisher name where this was published. If unknown, return 'Unknown'.")
+    let journal: String
+
+    @Guide(description: "The publication year as a 4-digit number. If unknown, return current year.")
+    let year: Int
+
+    @Guide(description: "The volume number if available, empty string if unknown.")
+    let volume: String
+
+    @Guide(description: "The issue or number if available, empty string if unknown.")
+    let number: String
+
+    @Guide(description: "The page range (e.g., '123-145') if available, empty string if unknown.")
+    let pages: String
+
+    @Guide(description: "The DOI if found in the document (e.g., '10.1103/PhysRevB.99.014406'), empty string if not found.")
+    let doi: String
+
+    @Guide(description: "The document type: 'article' for journal papers, 'inproceedings' for conferences, 'book', 'phdthesis', 'misc'. Default to 'article'.")
+    let documentType: String
+}
+
+/// Extract metadata from PDF text using Apple Foundation Models (macOS 26+)
+@available(macOS 26.0, *)
+func extractMetadataWithAI(from text: String) async -> AIExtractedMetadata? {
+    do {
+        // Limit text to first ~6000 chars (first 2-3 pages typically have all metadata)
+        let limitedText = String(text.prefix(6000))
+        
+        let prompt = """
+        Extract bibliographic metadata from this academic paper text.
+        Focus on the first page header, title, author list, and journal citation line.
+        Look for DOI patterns like "10.xxxx/..." and publication details.
+        
+        Document text:
+        \(limitedText)
+        """
+        
+        print("DEBUG - extractMetadataWithAI: Creating session...")
+        let session = LanguageModelSession()
+        print("DEBUG - extractMetadataWithAI: Calling respond with structured output...")
+        let response = try await session.respond(to: prompt, generating: AIExtractedMetadata.self)
+        print("DEBUG - extractMetadataWithAI: Success! Got structured metadata.")
+        
+        return response.content
+    } catch {
+        print("AI metadata extraction failed: \(error)")
+        return nil
+    }
+}
+
+/// Build BibTeX entry from AI-extracted metadata
+@available(macOS 26.0, *)
+func buildBibTeXFromAIMetadata(_ meta: AIExtractedMetadata, fallbackDOI: String, options: BibTeXFormatOptions, sourceURL: URL) -> String {
+    // Format authors for BibTeX
+    var authorsForBib: String
+    if meta.authors.isEmpty {
+        authorsForBib = "Unknown Author"
+    } else if options.shortenAuthors {
+        // Use formatAuthorName on each author and join with "and"
+        authorsForBib = meta.authors.map { formatAuthorName($0) }.joined(separator: " and ")
+    } else {
+        authorsForBib = meta.authors.joined(separator: " and ")
+    }
+    
+    // Use AI-extracted DOI or fallback
+    let doi = meta.doi.isEmpty ? fallbackDOI : meta.doi
+    
+    // Format journal if needed
+    var journalForBib = meta.journal
+    if options.abbreviateJournals {
+        journalForBib = formatJournalName(journalForBib)
+    }
+    
+    // Generate citation key
+    let authorLast = meta.authors.first?.components(separatedBy: " ").last?.filter { $0.isLetter } ?? "Author"
+    let titleFirst = meta.title.components(separatedBy: " ").filter { $0.count > 3 }.first?.filter { $0.isLetter } ?? "Title"
+    let cleanAuthorKey = authorLast.folding(options: .diacriticInsensitive, locale: .current)
+    let cleanTitleKey = titleFirst.folding(options: .diacriticInsensitive, locale: .current)
+    let citeKey = "\(cleanAuthorKey)\(meta.year)\(cleanTitleKey)".lowercased()
+    
+    // Build BibTeX entry
+    let docType = meta.documentType.isEmpty ? "article" : meta.documentType
+    var bib = "@\(docType){\(citeKey),\n"
+    bib += "    author = {\(options.useLaTeXEscaping ? latexEscaped(authorsForBib) : authorsForBib)},\n"
+    bib += "    title = {\(options.useLaTeXEscaping ? latexEscaped(meta.title) : meta.title)},\n"
+    bib += "    year = {\(meta.year)},\n"
+    bib += "    journal = {\(options.useLaTeXEscaping ? latexEscaped(journalForBib) : journalForBib)}"
+    
+    if !meta.volume.isEmpty { bib += ",\n    volume = {\(meta.volume)}" }
+    if !meta.number.isEmpty { bib += ",\n    number = {\(meta.number)}" }
+    if !meta.pages.isEmpty { bib += ",\n    pages = {\(meta.pages)}" }
+    if !doi.isEmpty { bib += ",\n    doi = {\(doi)}" }
+    
+    bib += ",\n    note = {Extracted from \(sourceURL.lastPathComponent) by GhostPDF (AI)}\n"
+    bib += "}"
+    
+    return bib
+}
 
 // Helper for Image Extraction
 class ImageExtractionContext {
@@ -521,20 +632,35 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
         }
     }
 
-    // Fallback: Offline extraction / Patching mechanism (removed as primary path)
+    // Fallback: Offline extraction with AI-first approach
     // If we are here, either offline mode is on, no DOI found, or CrossRef failed.
-    // Always do offline extraction first (your clean format)
+    
+    // Try AI-powered extraction first (macOS 26+)
+    if #available(macOS 26.0, *) {
+        // Extract text from first few pages for AI analysis
+        var headerText = ""
+        for i in 0..<min(3, doc.pageCount) {
+            if let page = doc.page(at: i), let pageText = page.string {
+                headerText += pageText + "\n\n"
+            }
+        }
+        
+        if !headerText.isEmpty {
+            print("DEBUG - Attempting AI-powered metadata extraction for BibTeX...")
+            if let aiMetadata = await extractMetadataWithAI(from: headerText) {
+                print("DEBUG - AI extraction successful! Building BibTeX from AI metadata.")
+                let aiBib = buildBibTeXFromAIMetadata(aiMetadata, fallbackDOI: doi, options: options, sourceURL: url)
+                return reformatBibTeX(aiBib, options: options)
+            } else {
+                print("DEBUG - AI extraction failed, falling back to heuristic extraction.")
+            }
+        }
+    } else {
+        print("DEBUG - macOS < 26, using heuristic extraction for BibTeX")
+    }
+    
+    // Fallback: Heuristic-based offline extraction
     let offlineBib = extractBibTeXOffline(url: url, doc: doc, extractedDOI: doi, options: options)
-    
-    // We can still try to patch offlineBib with partial metadata if needed, but for now
-    // we trust the offline extraction if online failed.
-    // (Partial patching logic removed to avoid "weird" string corruption issues)
-    
-    // Check for title fallback here if offline extraction produced a bad title?
-    // TitleExtractionHelper already used in findDOI, so if we had a DOI, we likely have correct metadata logic
-    // But if CrossRef fetch for BibTeX FAILED, we might still want metadata? 
-    // Usually if fetchBibTeXFromCrossRef fails, fetchMetadata might also fail or give partials.
-    // Let's keep it simple and robust: either authoritative online or best-effort offline.
     
     // Proceed to fallback chain
 

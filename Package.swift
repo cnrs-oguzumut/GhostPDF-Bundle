@@ -9,7 +9,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "GhostPDF+",
-            path: "Sources"
+            path: "Sources",
+            swiftSettings: [
+                .enableExperimentalFeature("StrictConcurrency=minimal")
+            ]
         )
     ]
 )

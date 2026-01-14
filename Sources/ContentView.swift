@@ -2,17 +2,19 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Network
 import PDFKit
+import FoundationModels
 
 // MARK: - Network Monitor
+@MainActor
 class NetworkMonitor: ObservableObject {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitor")
     @Published var isConnected = true
 
     init() {
-        monitor.pathUpdateHandler = { path in
-            DispatchQueue.main.async {
-                self.isConnected = path.status == .satisfied
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                self?.isConnected = path.status == .satisfied
             }
         }
         monitor.start(queue: queue)
@@ -26,20 +28,31 @@ enum ExtractMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum SummaryLength: Int, CaseIterable, Identifiable {
-    case short = 3
-    case medium = 7
-    case long = 15
-    case detailed = 30
-    
-    var id: Int { rawValue }
-    
-    var name: String {
+enum SummaryType: String, CaseIterable, Identifiable {
+    case tldr = "TL;DR"
+    case keyPoints = "Key Points"
+    case abstract = "Abstract"
+    case fullSummary = "Full Summary"
+
+    var id: String { rawValue }
+
+    var name: String { rawValue }
+
+    var icon: String {
         switch self {
-        case .short: return "Short (3)"
-        case .medium: return "Medium (7)"
-        case .long: return "Long (15)"
-        case .detailed: return "Detailed (30)"
+        case .tldr: return "bolt.fill"
+        case .keyPoints: return "list.bullet"
+        case .abstract: return "doc.text"
+        case .fullSummary: return "doc.text.fill"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .tldr: return "Ultra-short (3-5 sentences)"
+        case .keyPoints: return "Main findings (7-10 bullets)"
+        case .abstract: return "Academic summary (10 sentences)"
+        case .fullSummary: return "Comprehensive overview (20 sentences)"
         }
     }
 }
@@ -115,7 +128,7 @@ struct ContentView: View {
     
     // AI Summary State
     // AI Summary State
-    @State private var summaryLength: SummaryLength = .medium
+    @State private var summaryType: SummaryType = .keyPoints
     @State private var summaryText: String = ""
     @State private var isSummarizing: Bool = false
     
@@ -408,7 +421,7 @@ struct ContentView: View {
     private var aiTabContent: some View {
         AITabView(
             selectedFiles: $selectedFiles,
-            summaryLength: $summaryLength,
+            summaryType: $summaryType,
             summaryText: $summaryText,
             isSummarizing: $isSummarizing
         )
@@ -3565,7 +3578,7 @@ extension ContentView {
 
 struct AITabView: View {
     @Binding var selectedFiles: [ContentView.PDFFile]
-    @Binding var summaryLength: SummaryLength
+    @Binding var summaryType: SummaryType
     @Binding var summaryText: String
     @Binding var isSummarizing: Bool
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
@@ -3575,6 +3588,8 @@ struct AITabView: View {
     @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false
 
     @State private var activeAction: AIAction? = nil
+    @State private var extractedText: String = ""
+    @State private var showWritingToolsHelp: Bool = false
 
     enum AIAction {
         case summary
@@ -3600,15 +3615,23 @@ struct AITabView: View {
                     GroupBox {
                         VStack(spacing: 12) {
                             HStack {
-                                Image(systemName: "doc.text.magnifyingglass")
+                                Image(systemName: "wand.and.stars")
                                     .font(.system(size: 20))
                                     .foregroundColor(.purple)
-                                Text("PDF Summarization")
+                                Text("AI-Powered Summarization")
                                     .font(.headline)
                                 Spacer()
+
+                                // Info button
+                                Button(action: { showWritingToolsHelp.toggle() }) {
+                                    Image(systemName: "info.circle")
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Learn about AI summarization")
                             }
 
-                            Text("Extract key insights from academic papers using position and keyword-based analysis.")
+                            Text("Extract key insights from academic papers using intelligent text analysis")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -3616,53 +3639,78 @@ struct AITabView: View {
                             Divider()
 
                             HStack {
-                                Text("Length:")
+                                Text("Summary Type:")
                                     .foregroundColor(.secondary)
-                                Picker("", selection: $summaryLength) {
-                                    ForEach(SummaryLength.allCases) { length in
-                                        Text(length.name).tag(length)
+                                    .font(.subheadline)
+                                Spacer()
+                            }
+
+                            // Summary Type Grid
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                ForEach(SummaryType.allCases) { type in
+                                    Button(action: {
+                                        summaryType = type
+                                    }) {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: type.icon)
+                                                .font(.system(size: 18))
+                                            Text(type.name)
+                                                .font(.caption)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(summaryType == type ? Color.purple.opacity(0.2) : Color.clear)
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(summaryType == type ? Color.purple : Color.secondary.opacity(0.3), lineWidth: 1.5)
+                                        )
                                     }
+                                    .buttonStyle(.plain)
+                                    .help(type.description)
                                 }
-                                .pickerStyle(.segmented)
-                                .labelsHidden()
                             }
 
                             Button(action: {
                                 activeAction = .summary
-                                generateSummary()
+                                extractTextFromPDF()
                             }) {
                                 HStack {
                                     if isSummarizing && activeAction == .summary {
                                         ProgressView().controlSize(.small)
                                     } else {
-                                        Image(systemName: "wand.and.stars")
+                                        Image(systemName: "sparkles")
                                     }
-                                    Text(isSummarizing && activeAction == .summary ? "Analyzing..." : "Generate Summary")
+                                    Text(isSummarizing && activeAction == .summary ? "Extracting text..." : "Generate AI Summary")
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(activeAction == .summary ? .purple : .accentColor)
+                            .tint(.purple)
                             .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
                         }
                         .padding(12)
                     }
+                    .alert("AI Summarization", isPresented: $showWritingToolsHelp) {
+                        Button("OK", role: .cancel) { }
+                    } message: {
+                        Text("This feature uses intelligent text analysis to extract the most important sentences from your PDF based on position and keyword scoring. It processes everything locally - no internet required, completely private.\n\nChoose from 4 summary formats:\n• TL;DR - Ultra-short (3-5 sentences)\n• Key Points - Main findings (7-10 bullets)\n• Abstract - Academic summary (10 sentences)\n• Full Summary - Comprehensive overview (20 sentences)")
+                    }
                     
-                    // Coming Soon Card
+                    // Advanced AI Tools Card
                     GroupBox {
                         VStack(spacing: 12) {
                             HStack {
-                                Image(systemName: "sparkles")
+                                Image(systemName: "brain")
                                     .font(.system(size: 20))
-                                    .foregroundColor(.gray)
-                                Text("More AI Features Coming Soon")
+                                    .foregroundColor(.blue)
+                                Text("Advanced AI Tools")
                                     .font(.headline)
-                                    .foregroundColor(.secondary)
                                 Spacer()
                             }
-                            
-                            Text("Future AI capabilities: Key points extraction, Question answering, Document comparison, and more.")
+
+                            Text("Coming soon: Question answering, document comparison, concept extraction, and more AI-powered features.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -3675,102 +3723,88 @@ struct AITabView: View {
 
 
                 // Output Area
-                GroupBox("Output") {
+                GroupBox("AI Summary Output") {
                     VStack(alignment: .trailing, spacing: 8) {
                         HStack {
                             if !summaryText.isEmpty {
-                                Button(action: { summaryText = ""; activeAction = nil }) {
+                                Button(action: {
+                                    summaryText = ""
+                                    extractedText = ""
+                                    activeAction = nil
+                                }) {
                                     Label("Clear", systemImage: "trash")
                                 }
                                 .buttonStyle(.borderless)
                                 .foregroundColor(.red)
                                 .font(.caption)
 
-                                if summaryText.contains("@article") {
-                                    Button(action: reformatSummary) {
-                                        Label("Reformat", systemImage: "textformat")
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(.purple)
-                                    .font(.caption)
-                                    .help("Apply current formatting options to extracted entries")
-
-                                    Button(action: exportBibFile) {
-                                        Label("Save .bib", systemImage: "square.and.arrow.down")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .font(.caption)
-                                }
-                            }
-                            Spacer()
-                        }
-
-                        // Formatting options - show only when BibTeX is displayed
-                        if summaryText.contains("@article") {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Formatting Options")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.secondary)
-
-                                HStack(spacing: 16) {
-                                    Toggle("Shorten Authors", isOn: $shortenAuthors)
-                                        .font(.caption)
-
-                                    Toggle("Abbreviate Journals", isOn: $abbreviateJournals)
-                                        .font(.caption)
-                                }
-
-                                Text("Toggle options above and click 'Reformat' to apply changes")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-                            .cornerRadius(6)
-                        }
-
-                        ZStack(alignment: .topTrailing) {
-                            if summaryText.isEmpty {
-                                VStack(spacing: 12) {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(.purple.opacity(0.3))
-                                    Text("Choose an action above to get started")
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 280)
-                            } else {
-                                ScrollView {
-                                    Text(summaryText)
-                                        .textSelection(.enabled)
-                                        .font(.system(.body, design: summaryText.contains("@article") ? .monospaced : .default))
-                                        .lineSpacing(4)
-                                        .padding()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .frame(minHeight: 280)
-
                                 Button(action: {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(summaryText, forType: .string)
                                 }) {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 14))
+                                    Label("Copy", systemImage: "doc.on.doc")
                                 }
                                 .buttonStyle(.borderless)
-                                .padding(8)
-                                .help("Copy to Clipboard")
+                                .font(.caption)
+                            }
+                            Spacer()
+                        }
+
+                        // Main output display
+                        ZStack {
+                            if summaryText.isEmpty {
+                                // Empty state
+                                VStack(spacing: 12) {
+                                    if isSummarizing {
+                                        // Processing state
+                                        VStack(spacing: 16) {
+                                            ProgressView()
+                                                .scaleEffect(1.5)
+                                                .progressViewStyle(.circular)
+
+                                            Text("AI is analyzing your document...")
+                                                .font(.headline)
+                                                .foregroundColor(.purple)
+
+                                            Text("This may take a few moments")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    } else {
+                                        // Initial empty state
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 40))
+                                            .foregroundColor(.purple.opacity(0.3))
+                                        Text("Click 'Generate AI Summary' to begin")
+                                            .foregroundColor(.secondary)
+                                            .multilineTextAlignment(.center)
+                                        Text("AI-powered summary will appear here")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                            .multilineTextAlignment(.center)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 320)
+                            } else {
+                                // Summary result display
+                                ScrollView {
+                                    Text(summaryText)
+                                        .textSelection(.enabled)
+                                        .font(.system(.body))
+                                        .lineSpacing(6)
+                                        .padding()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(minHeight: 320)
+                                .background(Color(NSColor.textBackgroundColor))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                )
                             }
                         }
-                        .background(Color(NSColor.textBackgroundColor))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                        )
+
                     }
                 }
                 .padding(.horizontal)
@@ -3779,86 +3813,298 @@ struct AITabView: View {
         }
     }
 
-    private func reformatSummary() {
-                let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
-        summaryText = reformatBibTeX(summaryText, options: opts)
-    }
-
-    private func exportBibFile() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "bib")!]
-        panel.nameFieldStringValue = "citations.bib"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            try? summaryText.write(to: url, atomically: true, encoding: .utf8)
-        }
-    }
-
-    private func generateBibEntry() {
-        let checkedFiles = selectedFiles.filter { $0.isChecked }
-        guard !checkedFiles.isEmpty else { return }
-
-        isSummarizing = true
-        summaryText = allowOnlineLookup ? "Fetching metadata online..." : "Extracting metadata..."
-
-        Task {
-            var combinedBib = ""
-                    let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
-            for file in checkedFiles {
-                if let bib = await extractBibTeX(url: file.url, allowOnline: allowOnlineLookup, options: opts) {
-                    combinedBib += bib + "\n\n"
-                }
-            }
-
-            await MainActor.run {
-                summaryText = combinedBib.isEmpty ? "Could not extract metadata for BibTeX." : combinedBib
-                isSummarizing = false
-            }
-        }
-    }
-
-    private func generateSummary() {
+    private func extractTextFromPDF() {
         let checkedFiles = selectedFiles.filter { $0.isChecked }
         guard let file = checkedFiles.first else { return }
 
         isSummarizing = true
+        extractedText = ""
         summaryText = ""
 
         Task {
-            if let summary = summarizePDF(url: file.url, maxSentences: summaryLength.rawValue, password: nil) {
+            // Extract full text from PDF first
+            guard let pdfDoc = PDFDocument(url: file.url) else {
                 await MainActor.run {
-                    summaryText = summary
+                    summaryText = "Error: Could not open PDF file."
                     isSummarizing = false
                 }
-            } else {
+                return
+            }
+
+            var fullText = ""
+            for pageIndex in 0..<pdfDoc.pageCount {
+                if let page = pdfDoc.page(at: pageIndex) {
+                    if let pageText = page.string {
+                        fullText += pageText + "\n\n"
+                    }
+                }
+            }
+
+            guard !fullText.isEmpty else {
                 await MainActor.run {
                     summaryText = "Could not extract text from this PDF. It might be a scanned image without OCR."
                     isSummarizing = false
                 }
+                return
+            }
+
+            // Try AI-powered summarization first (macOS 26+)
+            if #available(macOS 26.0, *) {
+                if let aiSummary = await generateAISummary(text: fullText, type: summaryType) {
+                    await MainActor.run {
+                        summaryText = aiSummary
+                        isSummarizing = false
+                    }
+                    return
+                }
+            }
+
+            // Fallback to extractive summarization for older macOS
+            let sentenceCount: Int
+            switch summaryType {
+            case .tldr:
+                sentenceCount = 4
+            case .keyPoints:
+                sentenceCount = 8
+            case .abstract:
+                sentenceCount = 10
+            case .fullSummary:
+                sentenceCount = 20
+            }
+
+            if let summary = summarizePDF(url: file.url, maxSentences: sentenceCount, password: nil) {
+                await MainActor.run {
+                    summaryText = formatSummary(summary, type: summaryType)
+                    isSummarizing = false
+                }
+            } else {
+                await MainActor.run {
+                    summaryText = "Could not generate summary."
+                    isSummarizing = false
+                }
             }
         }
     }
-    
-    private func extractReferencesAction() {
-        let checkedFiles = selectedFiles.filter { $0.isChecked }
-        guard let file = checkedFiles.first else { return }
-        
-        isSummarizing = true
-        summaryText = "Scanning for references and extracting DOIs..."
-        
-        Task {
-                    let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
-            let references = await extractReferences(url: file.url, options: opts, allowOnline: allowOnlineLookup)
-            
-            await MainActor.run {
-                if references.isEmpty {
-                    summaryText = "No references found or unable to extract DOIs."
-                } else {
-                    let header = "// Extracted \(references.count) reference(s)\n// Verified entries fetched from CrossRef API\n\n"
-                    summaryText = header + references.joined(separator: "\n\n")
-                }
-                isSummarizing = false
+
+    @available(macOS 26.0, *)
+    private func generateAISummary(text: String, type: SummaryType) async -> String? {
+        do {
+            print("DEBUG - generateAISummary: Creating prompt...")
+            // Create prompt based on summary type
+            let prompt = createSummarizationPrompt(for: type, text: text)
+            print("DEBUG - generateAISummary: Prompt created, length: \(prompt.count)")
+
+            // Use Apple's Foundation Models API
+            print("DEBUG - generateAISummary: Creating LanguageModelSession...")
+            let session = LanguageModelSession()
+            print("DEBUG - generateAISummary: Session created, calling respond...")
+            let response = try await session.respond(to: prompt)
+            print("DEBUG - generateAISummary: Got response!")
+
+            return response.content
+        } catch {
+            print("AI Summarization failed: \(error)")
+            print("AI Summarization error description: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func createSummarizationPrompt(for type: SummaryType, text: String) -> String {
+        // Clean text: remove citations and references
+        let cleanedText = cleanTextForSummarization(text)
+
+        // Limit text length (Foundation Models have token limits)
+        let limitedText = String(cleanedText.prefix(8000))
+
+        switch type {
+        case .tldr:
+            return """
+            Summarize the following academic paper in 3-5 sentences. Focus on the main findings and conclusions. Be concise and clear.
+
+            Text:
+            \(limitedText)
+
+            TL;DR Summary:
+            """
+
+        case .keyPoints:
+            return """
+            Extract 7-10 key points from the following academic paper. Present them as bullet points. Focus on main findings, methodology, and conclusions.
+
+            Text:
+            \(limitedText)
+
+            Key Points:
+            """
+
+        case .abstract:
+            return """
+            Write an academic abstract (10 sentences) for the following paper. Include: background, methodology, key findings, and conclusions. Use formal academic tone.
+
+            Text:
+            \(limitedText)
+
+            Abstract:
+            """
+
+        case .fullSummary:
+            return """
+            Create a comprehensive summary of the following academic paper. Include:
+            - Introduction and background
+            - Methodology
+            - Key findings and results
+            - Discussion and implications
+            - Conclusions
+
+            Write in clear, flowing paragraphs. Make it readable and informative.
+
+            Text:
+            \(limitedText)
+
+            Summary:
+            """
+        }
+    }
+
+    private func cleanTextForSummarization(_ text: String) -> String {
+        var cleaned = text
+
+        // Remove URLs
+        cleaned = cleaned.replacingOccurrences(of: #"https?://[^\s]+"#, with: "", options: .regularExpression)
+
+        // Remove email addresses
+        cleaned = cleaned.replacingOccurrences(of: #"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"#, with: "", options: .regularExpression)
+
+        // Remove DOI references
+        cleaned = cleaned.replacingOccurrences(of: #"doi\.org/[^\s]+"#, with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: #"dx\.doi\.org/[^\s]+"#, with: "", options: .regularExpression)
+
+        // Remove bracket citations [1], [14], etc.
+        cleaned = cleaned.replacingOccurrences(of: #"\[\d+\]"#, with: "", options: .regularExpression)
+
+        // Remove "et al."
+        cleaned = cleaned.replacingOccurrences(of: "et al.", with: "")
+
+        // Remove excessive whitespace
+        cleaned = cleaned.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func formatSummary(_ text: String, type: SummaryType) -> String {
+        // Split into sentences and filter out citations and references
+        let allSentences = text.components(separatedBy: ". ").filter { sentence in
+            let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Filter out empty sentences
+            guard !trimmed.isEmpty else { return false }
+
+            // Filter out citations (contains http://, doi.org, [numbers], etc.)
+            if trimmed.contains("http://") || trimmed.contains("https://") ||
+               trimmed.contains("doi.org") || trimmed.contains("dx.doi.org") {
+                return false
             }
+
+            // Filter out journal citations (J Mech Phys, etc.)
+            if trimmed.range(of: #"J\s+\w+\s+\w+\s+\w+"#, options: .regularExpression) != nil &&
+               trimmed.contains(";") {
+                return false
+            }
+
+            // Filter out sentences with bracket citations [1], [14], etc.
+            if trimmed.range(of: #"\[\d+\]"#, options: .regularExpression) != nil {
+                return false
+            }
+
+            // Filter out reference-style sentences (starts with author names and years)
+            if trimmed.range(of: #"^\w+\s+[A-Z]\w*\s+\d{4}"#, options: .regularExpression) != nil {
+                return false
+            }
+
+            // Filter out sentences with "et al."
+            if trimmed.contains("et al.") {
+                return false
+            }
+
+            // Filter out sentences that are mostly citations (contain multiple years in brackets)
+            let yearMatches = trimmed.components(separatedBy: CharacterSet.decimalDigits.inverted)
+                .filter { $0.count == 4 && Int($0) != nil && Int($0)! > 1900 && Int($0)! < 2100 }
+            if yearMatches.count > 2 {
+                return false
+            }
+
+            // Filter out very short section headers
+            if trimmed.count < 20 {
+                return false
+            }
+
+            return true
+        }
+
+        let sentences = Array(allSentences)
+
+        switch type {
+        case .tldr:
+            // Ultra-short, casual format
+            return "TL;DR:\n\n" + sentences.joined(separator: ". ") + "."
+
+        case .keyPoints:
+            // Bullet points format
+            return "Key Points:\n\n" + sentences.enumerated().map { "• \($0.element.trimmingCharacters(in: .whitespacesAndNewlines))." }.joined(separator: "\n\n")
+
+        case .abstract:
+            // Academic paragraph format with better flow
+            let cleanedSentences = sentences.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            return "Abstract:\n\n" + cleanedSentences.joined(separator: ". ") + "."
+
+        case .fullSummary:
+            // Comprehensive multi-paragraph format with natural flow
+            var result = "Summary:\n\n"
+
+            let cleanedSentences = sentences.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+            // Varied transition words for more natural flow
+            let transitions = [
+                "Additionally,", "Moreover,", "Furthermore,", "In addition,",
+                "Building on this,", "Consequently,", "As a result,", "Similarly,",
+                "This approach", "The study also", "Research shows that", "It was found that"
+            ]
+
+            // Group sentences into meaningful paragraphs with varied transitions
+            let paragraphSize = 4
+            var paragraphs: [String] = []
+            var transitionIndex = 0
+
+            for i in stride(from: 0, to: cleanedSentences.count, by: paragraphSize) {
+                let end = min(i + paragraphSize, cleanedSentences.count)
+                let paragraphSentences = Array(cleanedSentences[i..<end])
+
+                var paragraph = ""
+                for (idx, sentence) in paragraphSentences.enumerated() {
+                    if idx == 0 {
+                        paragraph += sentence
+                    } else {
+                        // Add varied, natural transitions
+                        let startsWithThe = sentence.starts(with: "The ")
+                        let startsWithThis = sentence.starts(with: "This ")
+
+                        if !startsWithThe && !startsWithThis && idx % 2 == 1 {
+                            // Use transition words occasionally
+                            let transition = transitions[transitionIndex % transitions.count]
+                            transitionIndex += 1
+                            paragraph += ". " + transition + " " + sentence.prefix(1).lowercased() + sentence.dropFirst()
+                        } else {
+                            // Simple connection
+                            paragraph += ". " + sentence
+                        }
+                    }
+                }
+                paragraph += "."
+                paragraphs.append(paragraph)
+            }
+
+            result += paragraphs.joined(separator: "\n\n")
+            return result
         }
     }
 }
