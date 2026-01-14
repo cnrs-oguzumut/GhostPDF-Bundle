@@ -506,142 +506,37 @@ func extractBibTeX(url: URL, allowOnline: Bool = false, options: BibTeXFormatOpt
         }
     }
 
-    // Always do offline extraction first (your clean format)
-    // Always do offline extraction first (your clean format)
-    var offlineBib = extractBibTeXOffline(url: url, doc: doc, extractedDOI: doi, options: options)
-
-    // If online lookup is allowed and we have a DOI, enhance with metadata from CrossRef
-    if !doi.isEmpty && allowOnline, let bib = offlineBib {
-        if let metadata = await fetchMetadataFromDOI(doi) {
-            var enhancedBib = bib
-
-            // Check if offline title looks suspicious (common bad patterns)
-            let suspiciousTitlePatterns = [
-                #"J\. Mech\. Phys\. Solids \d+"#,     // Citation line extracted as title
-                #"Comput\. Methods Appl\. Mech"#,      // Another citation line pattern
-                #"journal homepage"#,                  // Includes webpage text
-                #"www\."#,                             // Contains URL
-                #"elsevier\.com"#,                     // Contains publisher URL
-                #"sciencedirect"#,                     // ScienceDirect reference
-                #"Received date"#,                     // Includes metadata
-                #"^\d{3,}"#,                           // Starts with page number
-                #"\(\d{4}\)\s+\d{5,}"#,                // Contains (year) followed by article number
-                #"International Journal of.*journal homepage"#,  // Common pattern in your case
-                #"ofSolids andStructures"#             // Malformed text from PDF
-            ]
-
-            var titleIsSuspicious = false
-            for pattern in suspiciousTitlePatterns {
-                if bib.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
-                    titleIsSuspicious = true
-                    break
-                }
-            }
-
-            // Replace title if it's suspicious and we have a good online title
-            if titleIsSuspicious, let onlineTitle = metadata.title {
-                let titlePattern = #"title = \{[^}]+\}"#
-                if enhancedBib.range(of: titlePattern, options: .regularExpression) != nil {
-                    enhancedBib = enhancedBib.replacingOccurrences(
-                        of: titlePattern,
-                        with: "title = {\(onlineTitle)}",
-                        options: .regularExpression
-                    )
-                }
-            }
-
-            // Always replace authors with complete list from CrossRef
-            if let onlineAuthors = metadata.authors {
-                let authorPattern = #"author = \{[^}]+\}"#
-                if enhancedBib.range(of: authorPattern, options: .regularExpression) != nil {
-                    enhancedBib = enhancedBib.replacingOccurrences(
-                        of: authorPattern,
-                        with: "author = {\(onlineAuthors)}",
-                        options: .regularExpression
-                    )
-                }
-            }
-
-            // Always replace journal name with correct one from CrossRef
-            if let onlineJournal = metadata.journal {
-                let journalPattern = #"journal = \{[^}]+\}"#
-                if enhancedBib.range(of: journalPattern, options: .regularExpression) != nil {
-                    enhancedBib = enhancedBib.replacingOccurrences(
-                        of: journalPattern,
-                        with: "journal = {\(onlineJournal)}",
-                        options: .regularExpression
-                    )
-                }
-            }
-
-            // Add or replace volume, pages, and issue if available from CrossRef
-            if let volume = metadata.volume {
-                if enhancedBib.contains("volume = ") {
-                    // Replace existing volume
-                    let volumePattern = #"volume = \{[^}]*\}"#
-                    enhancedBib = enhancedBib.replacingOccurrences(
-                        of: volumePattern,
-                        with: "volume = {\(volume)}",
-                        options: .regularExpression
-                    )
-                } else {
-                    // Add volume field after journal
-                    if let journalRange = enhancedBib.range(of: #"journal = \{[^}]+\}"#, options: .regularExpression) {
-                        let insertPos = journalRange.upperBound
-                        enhancedBib.insert(contentsOf: ",\n    volume = {\(volume)}", at: insertPos)
-                    }
-                }
-            }
-
-            if let pages = metadata.pages {
-                if enhancedBib.contains("pages = ") {
-                    // Replace existing pages
-                    let pagesPattern = #"pages = \{[^}]*\}"#
-                    enhancedBib = enhancedBib.replacingOccurrences(
-                        of: pagesPattern,
-                        with: "pages = {\(pages)}",
-                        options: .regularExpression
-                    )
-                } else {
-                    // Add pages field after volume (or journal if no volume)
-                    if let volumeRange = enhancedBib.range(of: #"volume = \{[^}]+\}"#, options: .regularExpression) {
-                        let insertPos = volumeRange.upperBound
-                        enhancedBib.insert(contentsOf: ",\n    pages = {\(pages)}", at: insertPos)
-                    } else if let journalRange = enhancedBib.range(of: #"journal = \{[^}]+\}"#, options: .regularExpression) {
-                        let insertPos = journalRange.upperBound
-                        enhancedBib.insert(contentsOf: ",\n    pages = {\(pages)}", at: insertPos)
-                    }
-                }
-            }
-
-            if let issue = metadata.issue {
-                if enhancedBib.contains("number = ") {
-                    // Replace existing number (issue)
-                    let numberPattern = #"number = \{[^}]*\}"#
-                    enhancedBib = enhancedBib.replacingOccurrences(
-                        of: numberPattern,
-                        with: "number = {\(issue)}",
-                        options: .regularExpression
-                    )
-                } else {
-                    // Add number field after volume
-                    if let volumeRange = enhancedBib.range(of: #"volume = \{[^}]+\}"#, options: .regularExpression) {
-                        let insertPos = volumeRange.upperBound
-                        enhancedBib.insert(contentsOf: ",\n    number = {\(issue)}", at: insertPos)
-                    } else if let journalRange = enhancedBib.range(of: #"journal = \{[^}]+\}"#, options: .regularExpression) {
-                        let insertPos = journalRange.upperBound
-                        enhancedBib.insert(contentsOf: ",\n    number = {\(issue)}", at: insertPos)
-                    }
-                }
-            }
-
-            // Update note to indicate online enhancement
-            return enhancedBib.replacingOccurrences(
-                of: "Extracted from",
-                with: "Metadata enhanced via CrossRef API from"
-            )
+    // If online lookup is allowed and we have a DOI, try fetching authoritative BibTeX from CrossRef
+    if !doi.isEmpty && allowOnline {
+        print("DEBUG - Found DOI: \(doi). Attempting direct CrossRef fetch...")
+        
+        if let onlineBib = await fetchBibTeXFromCrossRef(doi: doi) {
+            print("DEBUG - Successfully fetched BibTeX from CrossRef via DOI.")
+            // Apply formatting options (clean up, shorten authors, etc.)
+            // We use reformatBibTeX to ensure the output matches user preferences
+            let formattedBib = reformatBibTeX(onlineBib, options: options)
+            return formattedBib
+        } else {
+            print("DEBUG - Failed to fetch BibTeX from CrossRef. Falling back to offline extraction.")
         }
     }
+
+    // Fallback: Offline extraction / Patching mechanism (removed as primary path)
+    // If we are here, either offline mode is on, no DOI found, or CrossRef failed.
+    // Always do offline extraction first (your clean format)
+    let offlineBib = extractBibTeXOffline(url: url, doc: doc, extractedDOI: doi, options: options)
+    
+    // We can still try to patch offlineBib with partial metadata if needed, but for now
+    // we trust the offline extraction if online failed.
+    // (Partial patching logic removed to avoid "weird" string corruption issues)
+    
+    // Check for title fallback here if offline extraction produced a bad title?
+    // TitleExtractionHelper already used in findDOI, so if we had a DOI, we likely have correct metadata logic
+    // But if CrossRef fetch for BibTeX FAILED, we might still want metadata? 
+    // Usually if fetchBibTeXFromCrossRef fails, fetchMetadata might also fail or give partials.
+    // Let's keep it simple and robust: either authoritative online or best-effort offline.
+    
+    // Proceed to fallback chain
 
     // Fallback chain when no DOI or CrossRef failed - try title-based searches
     if allowOnline {
@@ -4312,11 +4207,17 @@ private func findDOI(in doc: PDFDocument, allowOnline: Bool) async -> String? {
         }
     }
     
-    // 4. Fallback: Search online by Title
+    // 4. Fallback: Search online by Title (Robust)
     if docDOI == nil, allowOnline {
         var searchTitle: String? = nil
-        if let attrs = doc.documentAttributes, let title = attrs[PDFDocumentAttribute.titleAttribute] as? String, !title.isEmpty {
+        if let attrs = doc.documentAttributes, let title = attrs[PDFDocumentAttribute.titleAttribute] as? String, !title.isEmpty, !title.lowercased().contains("untitled") {
             searchTitle = title
+        }
+        
+        // If metadata title is missing or bad, try heuristic extraction
+        if searchTitle == nil || (searchTitle?.count ?? 0) < 5 {
+             print("DEBUG - Metadata title is poor. Attempting heuristic title extraction...")
+             searchTitle = extractTitleFromPDF(doc: doc)
         }
         
         if let title = searchTitle {

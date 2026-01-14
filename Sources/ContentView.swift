@@ -3919,224 +3919,141 @@ struct ResearcherTabView: View {
                         .foregroundColor(.orange)
                     Text("Researcher Tools")
                         .font(.title2.bold())
+                    
                     Spacer()
-                }
-                .padding(.horizontal)
-                
-                // Action Cards
-                VStack(spacing: 16) {
-                    // BibTeX Card
-                    GroupBox {
-                        VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "quote.bubble")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.blue)
-                                Text("BibTeX Extraction")
-                                    .font(.headline)
-                                Spacer()
-                            }
-                            
-                            Text("Extract bibliographic metadata from PDFs for academic citations.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            Divider()
-                            
-                            Toggle(isOn: $allowOnlineLookup) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: allowOnlineLookup ? "wifi" : "wifi.slash")
-                                        .foregroundColor(allowOnlineLookup ? .green : .secondary)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(allowOnlineLookup ? "Online Mode" : "Offline Mode")
-                                            .font(.subheadline)
-                                        Text(allowOnlineLookup ? "CrossRef API for complete metadata" : "Local extraction only")
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                            .toggleStyle(.switch)
-                            
-                            Divider()
-                            
-                            // Formatting Options moved to Output area
-                            
-                            Divider()
-
-                            Button(action: {
-                                activeAction = .bibtex
-                                generateBibEntry()
-                            }) {
-                                HStack {
-                                    if isProcessing && activeAction == .bibtex {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Image(systemName: "doc.text")
-                                    }
-                                    Text(isProcessing && activeAction == .bibtex ? "Extracting..." : "Extract BibTeX")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(activeAction == .bibtex ? .blue : .accentColor)
-                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing)
-                        }
-                        .padding(12)
-                    }
                     
-                    // References Extraction Card
-                    GroupBox {
-                        VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "list.bullet.rectangle")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.orange)
-                                Text("References Extraction")
-                                    .font(.headline)
-                                Spacer()
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Extract all references from bibliography section using DOI lookup, CrossRef & Semantic Scholar.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                
-                                HStack(spacing: 4) {
-                                    Image(systemName: "wifi")
-                                        .font(.caption2)
-                                    Text("Requires active internet connection for CrossRef metadata.")
-                                        .font(.caption2)
-                                }
-                                .foregroundColor(.secondary)
-                                .padding(.top, 4)
-                            }
-                            
-                            Divider()
-                            
-                            if !networkMonitor.isConnected {
-                                HStack {
-                                    Image(systemName: "wifi.slash")
-                                    Text("Internet Connection Required")
-                                }
-                                .font(.caption)
-                                .foregroundColor(.red)
-                                .padding(.vertical, 4)
-                            }
-                            
-                            HStack(spacing: 12) {
-                                Button(action: {
-                                    activeAction = .references
-                                    extractReferencesAction()
-                                }) {
-                                    HStack {
-                                        if isProcessing && activeAction == .references {
-                                            ProgressView().controlSize(.small)
-                                        } else {
-                                            Image(systemName: "books.vertical")
-                                        }
-                                        Text(isProcessing && activeAction == .references ? "Extracting..." : "Extract References")
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(activeAction == .references ? .orange : .accentColor)
-                                .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing || !networkMonitor.isConnected)
-                                
-                                // Stop button - shown only while extracting references
-                                if isProcessing && activeAction == .references {
-                                    Button(action: {
-                                        isCancelled = true
-                                        extractionTask?.cancel()
-                                    }) {
-                                        HStack {
-                                            Image(systemName: "stop.circle.fill")
-                                            Text("Stop")
-                                        }
-                                        .padding(.vertical, 10)
-                                        .padding(.horizontal, 16)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(.red)
-                                }
-                            }
-                        }
-                        .padding(12)
-                    }
+                    // Online Mode Toggle (Moved to Header)
+                    Toggle("Online Mode", isOn: $allowOnlineLookup)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .help("Enable online lookup (CrossRef/Semantic Scholar)")
                     
-                    // Renaming Assistant Card
-                    GroupBox {
-                        VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "pencil.and.outline")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.purple)
-                                Text("PDF Renaming Assistant")
-                                    .font(.headline)
-                                Spacer()
-                            }
-                            
-                            Text("Automatically rename selected PDFs using 'Author - Year - Title' format.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            Button(action: {
-                                activeAction = .rename
-                                analyzeAndRenameAction()
-                            }) {
-                                HStack {
-                                    if isProcessing && activeAction == .rename {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Image(systemName: "pencil")
-                                    }
-                                    Text(isProcessing && activeAction == .rename ? "Analyzing..." : "Analyze & Rename")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(activeAction == .rename ? .purple : .accentColor)
-                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isProcessing)
-                        }
-                        .padding(12)
+                    if allowOnlineLookup {
+                        Image(systemName: "wifi")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                            .help("Online Mode Enabled")
+                    } else {
+                        Image(systemName: "wifi.slash")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                            .help("Offline Mode (Local Extraction Only)")
                     }
                 }
                 .padding(.horizontal)
                 
-                // Metadata Editor Card
-                GroupBox(label: Label("Metadata Editor", systemImage: "tag.fill")) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if selectedFiles.filter({ $0.isChecked }).count == 1 {
-                            VStack(spacing: 12) {
-                                TextField("Title", text: $metaTitle)
-                                TextField("Author", text: $metaAuthor)
-                                TextField("Subject", text: $metaSubject)
-                                TextField("Keywords", text: $metaKeywords)
-                                TextField("Creator", text: $metaCreator)
+                // MAIN ACTION GRID
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 16) {
+                    
+                    // 1. BibTeX Extraction
+                    SquareActionCard(
+                        title: "Extract BibTeX",
+                        icon: "doc.text",
+                        color: .blue,
+                        isActive: activeAction == .bibtex,
+                        isProcessing: isProcessing && activeAction == .bibtex,
+                        isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
+                    ) {
+                        activeAction = .bibtex
+                        generateBibEntry()
+                    }
+                    
+                    // 2. References Extraction
+                    SquareActionCard(
+                        title: "Extract Refs",
+                        icon: "list.bullet.rectangle",
+                        color: .orange,
+                        isActive: activeAction == .references,
+                        isProcessing: isProcessing && activeAction == .references,
+                        isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty || !allowOnlineLookup
+                    ) {
+                        activeAction = .references
+                        extractReferencesAction()
+                    }
+                    
+                    // 3. DOI Lookup (NEW)
+                    SquareActionCard(
+                        title: "DOI Lookup",
+                        icon: "magnifyingglass",
+                        color: .green,
+                        isActive: activeAction == .lookup,
+                        isProcessing: isProcessing && activeAction == .lookup,
+                        isDisabled: !allowOnlineLookup
+                    ) {
+                        activeAction = .lookup
+                        // Logic handled in detailed view below
+                    }
+                    
+                    // 4. Rename PDF
+                    SquareActionCard(
+                        title: "Rename PDF",
+                        icon: "pencil",
+                        color: .purple,
+                        isActive: activeAction == .rename,
+                        isProcessing: isProcessing && activeAction == .rename,
+                        isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
+                    ) {
+                        activeAction = .rename
+                        analyzeAndRenameAction()
+                    }
+                    
+                    // 5. Metadata Editor
+                    SquareActionCard(
+                        title: "Metadata",
+                        icon: "tag.fill",
+                        color: .indigo,
+                        isActive: activeAction == .metadata,
+                        isProcessing: isProcessing && activeAction == .metadata,
+                        isDisabled: selectedFiles.filter { $0.isChecked }.count != 1
+                    ) {
+                        activeAction = .metadata
+                        if let file = selectedFiles.first(where: { $0.isChecked }) {
+                            readMetadata(from: file.url)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                
+                // DETAILED ACTION VIEWS (Expandable Areas based on selection)
+                
+                // DOI Lookup Input Area
+                if activeAction == .lookup {
+                    GroupBox(label: Label("Extract from DOI", systemImage: "link")) {
+                        HStack {
+                            TextField("Enter DOI (e.g. 10.1103/PhysRevB.99.014406)", text: $doiInput)
+                                .textFieldStyle(.roundedBorder)
+                            
+                            Button("Extract") {
+                                Task {
+                                    await lookupDOIAction()
+                                }
                             }
-                            .textFieldStyle(.roundedBorder)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(doiInput.isEmpty || isProcessing)
+                        }
+                        .padding(8)
+                    }
+                    .padding(.horizontal)
+                }
+                
+                // Metadata Editor View
+                if activeAction == .metadata {
+                     GroupBox(label: Label("Metadata Editor", systemImage: "tag.fill")) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            TextField("Title", text: $metaTitle)
+                            TextField("Author", text: $metaAuthor)
+                            TextField("Subject", text: $metaSubject)
+                            TextField("Keywords", text: $metaKeywords)
+                            TextField("Creator", text: $metaCreator)
                             
                             HStack {
-                                Button("Read Metadata") {
-                                    if let file = selectedFiles.first(where: { $0.isChecked }) {
-                                        readMetadata(from: file.url)
-                                    }
-                                }
-                                
                                 Spacer()
-                                
                                 Button(action: {
                                     Task {
                                         await writeMetadataAction()
                                     }
                                 }) {
-                                    if isProcessing && activeAction == .metadata {
+                                    if isProcessing {
                                         ProgressView().scaleEffect(0.5)
                                     } else {
                                         Text("Apply Changes")
@@ -4145,19 +4062,12 @@ struct ResearcherTabView: View {
                                 .buttonStyle(.borderedProminent)
                                 .disabled(isProcessing)
                             }
-                        } else {
-                            HStack {
-                                Image(systemName: "info.circle")
-                                Text("Select exactly one PDF to view and edit metadata.")
-                            }
-                            .foregroundColor(.secondary)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity, alignment: .center)
                         }
+                        .padding(12)
+                        .textFieldStyle(.roundedBorder)
                     }
-                    .padding(12)
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
                 
                 // Output Area
                 GroupBox("Output") {
@@ -4179,8 +4089,6 @@ struct ResearcherTabView: View {
                                     .tint(.green)
                                     .font(.caption)
                                     .help("Remove unnecessary fields (abstract, language, etc.), clean braces in names, and remove duplicates")
-                                    // Legacy formatting buttons removed
-
 
                                     Button(action: exportBibFile) {
                                         Label("Save .bib", systemImage: "square.and.arrow.down")
@@ -4193,6 +4101,7 @@ struct ResearcherTabView: View {
                             }
                             Spacer()
                         }
+
 
                         // Formatting options - show whenever output is generated (BibTeX or References)
                         // Formatting Controls
@@ -4975,6 +4884,27 @@ struct ResearcherTabView: View {
             }
         }
     }
+    
+    private func lookupDOIAction() async {
+        let trimmedDOI = doiInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedDOI.isEmpty else { return }
+        
+        isProcessing = true
+        outputText = "Fetching BibTeX for DOI: \(trimmedDOI)..."
+        
+        // Call backend function
+        if let bib = await fetchBibTeXFromCrossRef(doi: trimmedDOI) {
+            await MainActor.run {
+                outputText = bib
+                isProcessing = false
+            }
+        } else {
+            await MainActor.run {
+                outputText = "Failed to fetch BibTeX for DOI: \(trimmedDOI).\nPlease check the DOI and your internet connection."
+                isProcessing = false
+            }
+        }
+    }
 
     private func getPreviewText() -> String {
         return outputText
@@ -5664,4 +5594,52 @@ struct BibTeXFormatterView: View {
         }
     }
 
+}
+
+struct SquareActionCard: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let isActive: Bool
+    let isProcessing: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 12) {
+                if isProcessing {
+                    ProgressView()
+                        .scaleEffect(1.2)
+                        .frame(width: 40, height: 40)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 32))
+                        .foregroundColor(isActive ? .white : color)
+                        .frame(width: 40, height: 40)
+                }
+                
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.medium)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(isActive ? .white : .primary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .aspectRatio(1.0, contentMode: .fill)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isActive ? color : Color(NSColor.controlBackgroundColor))
+                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isActive ? color.opacity(0.8) : Color.gray.opacity(0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.5 : 1.0)
+    }
 }
