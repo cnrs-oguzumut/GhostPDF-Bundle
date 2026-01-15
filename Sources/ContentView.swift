@@ -5609,10 +5609,9 @@ struct AITabView: View {
                 let session = LanguageModelSession()
 
                 let prompt = """
-                You are an academic writing assistant. Generate a professional cover letter for submitting a research paper to a journal.
+                You are an academic writing assistant. Generate a professional cover letter template for submitting a research paper to a journal.
 
-                Journal: \(coverLetterJournal)
-                Corresponding Author: \(coverLetterAuthor)
+                Target Journal: \(coverLetterJournal)
 
                 Paper Content (Abstract/Introduction):
                 \(limitedText)
@@ -5625,12 +5624,25 @@ struct AITabView: View {
                 5. States that the work is original and not under consideration elsewhere
                 6. Thanks the editor
 
-                Format as a proper business letter with date, salutation, body paragraphs, and closing.
+                Format requirements:
+                - Start with: [Date]
+                - Salutation: "Dear Editor-in-Chief," or "Dear Editors,"
+                - Body paragraphs (3-4 paragraphs)
+                - Closing: "Sincerely,"
+                - End with: [Your Name]
+
                 Use formal academic tone. Keep it concise (300-400 words).
+                Do NOT fill in the author name - leave [Your Name] as a placeholder.
                 """
 
                 let response = try await session.respond(to: prompt)
-                coverLetterText = response.content
+
+                // Replace [Your Name] placeholder with actual author name
+                var finalLetter = response.content
+                finalLetter = finalLetter.replacingOccurrences(of: "[Your Name]", with: coverLetterAuthor)
+                finalLetter = finalLetter.replacingOccurrences(of: "[Date]", with: Date().formatted(date: .long, time: .omitted))
+
+                coverLetterText = finalLetter
             } catch {
                 coverLetterText = "Error generating cover letter: \(error.localizedDescription)"
             }
