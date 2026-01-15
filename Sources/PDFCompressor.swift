@@ -41,6 +41,28 @@ struct AIExtractedMetadata {
     let documentType: String
 }
 
+// MARK: - AI-Powered Grammar Checking Models
+
+@available(macOS 26.0, *)
+@Generable
+struct GrammarCorrection {
+    @Guide(description: "The original text snippet containing the error. Must be exact text from the document.")
+    let original: String
+
+    @Guide(description: "The corrected version of the text. Must be different from original.")
+    let suggested: String
+
+    @Guide(description: "Brief explanation of what type of error this is (e.g., 'spelling', 'grammar', 'merged words', 'punctuation').")
+    let errorType: String
+}
+
+@available(macOS 26.0, *)
+@Generable
+struct GrammarCheckResult {
+    @Guide(description: "List of all grammar corrections found in the text. If no errors found, return an empty array.")
+    let corrections: [GrammarCorrection]
+}
+
 /// Extract metadata from PDF text using Apple Foundation Models (macOS 26+)
 @available(macOS 26.0, *)
 func extractMetadataWithAI(from text: String) async -> AIExtractedMetadata? {
@@ -645,6 +667,49 @@ func imageTiffData(_ image: CGImage) -> Data? {
 import NaturalLanguage
 
 /// Extract all text content from a PDF
+/// Extract text from PDF using Ghostscript (more robust spacing)
+func extractTextWithGS(url: URL, pageIndex: Int? = nil) async -> String? {
+    guard let gsPath = PDFCompressor.findGhostscript() else { return nil }
+    
+    let fileManager = FileManager.default
+    let tempOutputPath = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+    
+    var arguments = [
+        "-q",
+        "-dNOPAUSE",
+        "-dBATCH",
+        "-sDEVICE=txtwrite",
+        "-sOutputFile=\(tempOutputPath.path)"
+    ]
+    
+    if let page = pageIndex {
+        arguments.append("-dFirstPage=\(page + 1)")
+        arguments.append("-dLastPage=\(page + 1)")
+    }
+    
+    arguments.append(url.path)
+    
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: gsPath)
+    task.arguments = arguments
+    
+    do {
+        try task.run()
+        task.waitUntilExit()
+        
+        if task.terminationStatus == 0 {
+            let extractedText = try String(contentsOf: tempOutputPath, encoding: .utf8)
+            try? fileManager.removeItem(at: tempOutputPath)
+            return extractedText
+        }
+    } catch {
+        print("Ghostscript text extraction failed: \(error)")
+    }
+    
+    try? fileManager.removeItem(at: tempOutputPath)
+    return nil
+}
+
 func extractTextFromPDF(url: URL, password: String? = nil) -> String? {
     guard let doc = PDFDocument(url: url) else { return nil }
     

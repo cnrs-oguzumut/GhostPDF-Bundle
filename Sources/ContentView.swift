@@ -34,29 +34,44 @@ enum SummaryType: String, CaseIterable, Identifiable {
     case keyPoints = "Key Points"
     case abstract = "Abstract"
     case fullSummary = "Full Summary"
-
-    var id: String { rawValue }
-
-    var name: String { rawValue }
-
+    
+    var id: String { self.rawValue }
+    
     var icon: String {
         switch self {
-        case .tldr: return "bolt.fill"
-        case .keyPoints: return "list.bullet"
-        case .abstract: return "doc.text"
+        case .tldr: return "text.badge.minus"
+        case .keyPoints: return "list.bullet.indent"
+        case .abstract: return "doc.text.magnifyingglass"
         case .fullSummary: return "doc.text.fill"
         }
     }
-
+    
+    var name: String { self.rawValue }
+    
     var description: String {
         switch self {
-        case .tldr: return "Ultra-short (3-5 sentences)"
-        case .keyPoints: return "Main findings (7-10 bullets)"
-        case .abstract: return "Academic summary (10 sentences)"
-        case .fullSummary: return "Comprehensive overview (20 sentences)"
+        case .tldr: return "The most important insights in 3-5 sentences."
+        case .keyPoints: return "A bulleted list of 7-10 main takeaways."
+        case .abstract: return "A formal academic summary of about 10 sentences."
+        case .fullSummary: return "A comprehensive overview covering all sections (20 sentences)."
         }
     }
 }
+
+enum GrammarEnglishMode: String, CaseIterable, Identifiable {
+    case american = "American English"
+    case british = "British English"
+    
+    var id: String { self.rawValue }
+    
+    var icon: String {
+        switch self {
+        case .american: return "flag.fill"
+        case .british: return "flag.fill"
+        }
+    }
+}
+
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
@@ -171,6 +186,11 @@ struct ContentView: View {
     @State private var qnaInput: String = ""
     @State private var chatHistory: [(role: String, content: String)] = []
     @State private var isThinking: Bool = false
+    
+    // AI Grammar State
+    @State private var grammarText: String = ""
+    @State private var isGrammarChecking: Bool = false
+    @AppStorage("grammarEnglishMode") private var grammarEnglishMode: GrammarEnglishMode = .american
     
     // Researcher Tab State (separate from AI tab)
     @SceneStorage("researcherOutputText") private var researcherOutputText: String = ""
@@ -549,6 +569,7 @@ struct ContentView: View {
                 .foregroundColor(Color(red: 148/255, green: 163/255, blue: 184/255))
                 .multilineTextAlignment(.center)
                 Spacer()
+            Spacer()
         }
         .padding(24)
     }
@@ -562,7 +583,10 @@ struct ContentView: View {
             isSummarizing: $isSummarizing,
             qnaInput: $qnaInput,
             chatHistory: $chatHistory,
-            isThinking: $isThinking
+            isThinking: $isThinking,
+            grammarText: $grammarText,
+            isGrammarChecking: $isGrammarChecking,
+            grammarEnglishMode: $grammarEnglishMode
         )
     }
     
@@ -3755,6 +3779,9 @@ struct AITabView: View {
     @Binding var qnaInput: String
     @Binding var chatHistory: [(role: String, content: String)]
     @Binding var isThinking: Bool
+    @Binding var grammarText: String
+    @Binding var isGrammarChecking: Bool
+    @Binding var grammarEnglishMode: GrammarEnglishMode
 
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
     @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
@@ -3769,11 +3796,22 @@ struct AITabView: View {
     @State private var relatedWorkTopic: String = ""
     @State private var relatedWorkOutput: String = ""
     @State private var isSearchingRelatedWork: Bool = false
+    @State private var currentGrammarTask: Task<Void, Never>? = nil // Handle for cancellation
+
+    // Grammar check enhancements
+    @AppStorage("grammarTemperature") private var grammarTemperature: Double = 0.2
+    @State private var grammarProgress: String = ""
+    @State private var grammarCurrentPage: Int = 0
+    @State private var grammarTotalPages: Int = 0
+    @State private var grammarCorrectionsCount: Int = 0
+    @State private var isWarmingUp: Bool = false
+    @State private var warmedUpSession: Any? = nil // Store warmed session
 
     enum AIAction: String, CaseIterable, Identifiable {
         case summary = "Summarize"
         case chat = "AI Chat"
         case finder = "Finder"
+        case grammar = "Grammar"
         
         var id: String { self.rawValue }
     }
@@ -3887,6 +3925,23 @@ struct AITabView: View {
                         ) {
                             activeAction = .finder
                         }
+                        
+                        // 4. Grammar Check
+                        SquareActionCard(
+                            title: "Grammar",
+                            icon: "checkmark.seal.fill",
+                            color: .green,
+                            isActive: activeAction == .grammar,
+                            isProcessing: isGrammarChecking && activeAction == .grammar,
+                            isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
+                        ) {
+                            if isGrammarChecking && activeAction == .grammar {
+                                self.currentGrammarTask?.cancel()
+                                self.isGrammarChecking = false
+                            } else {
+                                activeAction = .grammar
+                            }
+                        }
                     }
                     .padding(.horizontal)
 
@@ -3904,12 +3959,50 @@ struct AITabView: View {
                         if activeAction == .finder {
                             relatedWorkView
                         }
+                        
+                        if activeAction == .grammar {
+                            grammarCheckView
+                            outputAreaView
+                        }
                     }
                     .padding(.horizontal)
                 }
             }
             .padding(.vertical)
         }
+        .onAppear {
+            // Pre-warm the AI session when tab appears
+            if isTahoeAvailable && warmedUpSession == nil {
+                if #available(macOS 26.0, *) {
+                    Task {
+                        await warmUpAISession()
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Session Warm-up
+    @available(macOS 26.0, *)
+    private func warmUpAISession() async {
+        guard !isWarmingUp else { return }
+
+        isWarmingUp = true
+        grammarProgress = "Warming up AI model..."
+
+        do {
+            let session = LanguageModelSession()
+            // Send a simple test prompt to warm up the session
+            let _ = try await session.respond(to: "Test: The cat sat on the mat.")
+            // Store the warmed session
+            warmedUpSession = session
+            print("AI Session warmed up successfully")
+        } catch {
+            print("Failed to warm up AI session: \(error)")
+        }
+
+        isWarmingUp = false
+        grammarProgress = ""
     }
 
     @ViewBuilder
@@ -4179,14 +4272,24 @@ struct AITabView: View {
 
     @ViewBuilder
     private var outputAreaView: some View {
-        // Output Area
-        GroupBox("AI Summary Output") {
+        let isActiveGrammar = activeAction == .grammar
+        let currentOutputText = isActiveGrammar ? grammarText : summaryText
+        let isProcessingCurrent = isActiveGrammar ? isGrammarChecking : isSummarizing
+        let headerTitle = isActiveGrammar ? "Grammar Check Output" : "AI Summary Output"
+        let emptyMessage = isActiveGrammar ? "AI-powered grammar corrections will appear here" : "AI-powered summary will appear here"
+        let initialActionMessage = isActiveGrammar ? "Click 'Check Grammar' to begin" : "Click 'Generate AI Summary' to begin"
+        let processingMessage = isActiveGrammar ? "AI is proofreading your document..." : "AI is analyzing your document..."
+        GroupBox(headerTitle) {
             VStack(alignment: .trailing, spacing: 8) {
                 HStack {
-                    if !summaryText.isEmpty {
+                    if !currentOutputText.isEmpty && !isProcessingCurrent {
                         Button(action: {
-                            summaryText = ""
-                            extractedText = ""
+                            if isActiveGrammar {
+                                grammarText = ""
+                            } else {
+                                summaryText = ""
+                                extractedText = ""
+                            }
                             activeAction = nil
                         }) {
                             Label("Clear", systemImage: "trash")
@@ -4197,7 +4300,7 @@ struct AITabView: View {
 
                         Button(action: {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(summaryText, forType: .string)
+                            NSPasteboard.general.setString(currentOutputText, forType: .string)
                         }) {
                             Label("Copy", systemImage: "doc.on.doc")
                         }
@@ -4209,33 +4312,39 @@ struct AITabView: View {
 
                 // Main output display
                 ZStack {
-                    if summaryText.isEmpty {
-                        // Empty state
+                    if currentOutputText.isEmpty || (isProcessingCurrent && currentOutputText.contains("Starting") || currentOutputText.contains("Analyzing Grammar")) {
+                        // Empty or Initial Processing state
                         VStack(spacing: 12) {
-                            if isSummarizing {
+                            if isProcessingCurrent {
                                 // Processing state
                                 VStack(spacing: 16) {
                                     ProgressView()
                                         .scaleEffect(1.5)
                                         .progressViewStyle(.circular)
 
-                                    Text("AI is analyzing your document...")
+                                    Text(processingMessage)
                                         .font(.headline)
-                                        .foregroundColor(.purple)
+                                        .foregroundColor(isActiveGrammar ? .green : .purple)
 
-                                    Text("This may take a few moments")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                    if isActiveGrammar {
+                                        Text(currentOutputText) // Show "Page X of Y"
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text("This may take a few moments")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             } else {
                                 // Initial empty state
-                                Image(systemName: "sparkles")
+                                Image(systemName: isActiveGrammar ? "checkmark.seal" : "sparkles")
                                     .font(.system(size: 40))
-                                    .foregroundColor(.purple.opacity(0.3))
-                                Text("Click 'Generate AI Summary' to begin")
+                                    .foregroundColor((isActiveGrammar ? Color.green : Color.purple).opacity(0.3))
+                                Text(initialActionMessage)
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
-                                Text("AI-powered summary will appear here")
+                                Text(emptyMessage)
                                     .font(.caption)
                                     .foregroundColor(.secondary.opacity(0.7))
                                     .multilineTextAlignment(.center)
@@ -4243,9 +4352,9 @@ struct AITabView: View {
                         }
                         .frame(maxWidth: .infinity, minHeight: 320)
                     } else {
-                        // Summary result display
+                        // Result display
                         ScrollView {
-                            Text(summaryText)
+                            Text(currentOutputText)
                                 .textSelection(.enabled)
                                 .font(.system(.body))
                                 .lineSpacing(6)
@@ -4265,6 +4374,298 @@ struct AITabView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var grammarCheckView: some View {
+        GroupBox {
+            VStack(spacing: 12) {
+                HStack {
+                    Text("Regional English Preference:")
+                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                    Spacer()
+                }
+
+                Picker("English Mode", selection: $grammarEnglishMode) {
+                    ForEach(GrammarEnglishMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                // Temperature Slider
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("AI Creativity:")
+                            .foregroundColor(.secondary)
+                            .font(.subheadline)
+                        Spacer()
+                        Text("\(grammarTemperature, specifier: "%.1f")")
+                            .foregroundColor(.primary)
+                            .font(.subheadline.monospacedDigit())
+                    }
+
+                    Slider(value: $grammarTemperature, in: 0.0...1.0, step: 0.1) {
+                        Text("Temperature")
+                    } minimumValueLabel: {
+                        VStack(spacing: 2) {
+                            Text("0.0")
+                                .font(.caption2)
+                            Text("Precise")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    } maximumValueLabel: {
+                        VStack(spacing: 2) {
+                            Text("1.0")
+                                .font(.caption2)
+                            Text("Creative")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .accentColor(grammarTemperature < 0.3 ? .green : grammarTemperature < 0.7 ? .orange : .red)
+
+                    Text("Lower = More consistent corrections. Higher = More varied suggestions. Recommended: 0.0-0.3 for grammar.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.vertical, 4)
+
+                // Progress Indicator
+                if isGrammarChecking && activeAction == .grammar {
+                    VStack(spacing: 8) {
+                        if grammarTotalPages > 0 {
+                            ProgressView(value: Double(grammarCurrentPage), total: Double(grammarTotalPages)) {
+                                HStack {
+                                    Text(grammarProgress)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("Page \(grammarCurrentPage)/\(grammarTotalPages)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        } else {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text(grammarProgress)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        if grammarCorrectionsCount > 0 {
+                            Text("Found \(grammarCorrectionsCount) correction\(grammarCorrectionsCount == 1 ? "" : "s") so far")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                if isGrammarChecking && activeAction == .grammar {
+                    Button(action: {
+                        self.currentGrammarTask?.cancel()
+                        self.isGrammarChecking = false
+                    }) {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Stop Checking")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                } else {
+                    Button(action: {
+                        activeAction = .grammar
+                        performGrammarCheck()
+                    }) {
+                        HStack {
+                            Image(systemName: "checkmark.seal.fill")
+                            Text("Check Grammar (Local AI)")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isGrammarChecking)
+                }
+                
+                Text("Processes text page-by-page using Apple Foundation Models. Works entirely offline.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(12)
+        }
+    }
+
+    private func performGrammarCheck() {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard let file = checkedFiles.first else { return }
+
+        isGrammarChecking = true
+        grammarText = ""
+        grammarCorrectionsCount = 0
+
+        self.currentGrammarTask = Task {
+            if Task.isCancelled { return }
+
+            guard let pdfDoc = PDFDocument(url: file.url) else {
+                await MainActor.run {
+                    grammarText = "Error: Could not open PDF file."
+                    isGrammarChecking = false
+                }
+                return
+            }
+
+            let pageCount = pdfDoc.pageCount
+
+            await MainActor.run {
+                grammarTotalPages = pageCount
+                grammarCurrentPage = 0
+            }
+
+            var allCorrections: [(original: String, suggested: String, errorType: String)] = []
+
+            if #available(macOS 26.0, *) {
+                // Create a fresh session for each grammar check
+                let session = LanguageModelSession()
+                
+                for pageIndex in 0..<pageCount {
+                    if Task.isCancelled { break }
+
+                    await MainActor.run {
+                        grammarCurrentPage = pageIndex + 1
+                        grammarProgress = "Analyzing page \(pageIndex + 1) of \(pageCount)..."
+                    }
+
+                    // Use Ghostscript for high-quality text extraction
+                    if let pageText = await extractTextWithGS(url: file.url, pageIndex: pageIndex),
+                       !pageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+
+                        let regionalInstruction = grammarEnglishMode == .british
+                            ? "UK English spelling (e.g., -ise, -our, -re) and punctuation (single quotes)"
+                            : "US English spelling (e.g., -ize, -or, -er) and punctuation (double quotes)"
+
+                        let systemPrompt = """
+                        You are a meticulous academic editor. Find and fix EVERY grammar, spelling, and punctuation error.
+                        Focus on: structural grammar (subject-verb agreement), spelling errors, merged/glued words (missing spaces), and punctuation.
+
+                        Use \(regionalInstruction).
+
+                        Analyze this text and return ALL corrections found. If no errors exist, return an empty corrections array.
+
+                        TEXT:
+                        \(pageText)
+                        """
+
+                        // Retry logic with structured output
+                        var pageCorrections: GrammarCheckResult? = nil
+                        let maxRetries = 3
+
+                        for attempt in 1...maxRetries {
+                            if Task.isCancelled { break }
+
+                            if attempt > 1 {
+                                await MainActor.run {
+                                    grammarProgress = "Retrying page \(pageIndex + 1)... (Attempt \(attempt)/\(maxRetries))"
+                                }
+                            }
+
+                            do {
+                                // Use structured output for reliable parsing
+                                let response = try await session.respond(to: systemPrompt, generating: GrammarCheckResult.self)
+                                pageCorrections = response.content
+
+                                // Success - break retry loop
+                                if !pageCorrections!.corrections.isEmpty {
+                                    await MainActor.run {
+                                        grammarProgress = "Found \(pageCorrections!.corrections.count) error(s) on page \(pageIndex + 1)"
+                                    }
+                                }
+                                break
+                            } catch {
+                                print("AI Grammar check attempt \(attempt) failed for page \(pageIndex + 1): \(error)")
+                                if attempt == maxRetries {
+                                    await MainActor.run {
+                                        grammarProgress = "Failed to analyze page \(pageIndex + 1) after \(maxRetries) attempts"
+                                    }
+                                } else {
+                                    // Small delay before retry
+                                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                                }
+                            }
+                        }
+
+                        // Process corrections
+                        if let corrections = pageCorrections?.corrections, !corrections.isEmpty {
+                            for correction in corrections {
+                                // Validate that original and suggested are actually different
+                                if correction.original.lowercased() != correction.suggested.lowercased() {
+                                    allCorrections.append((
+                                        original: correction.original,
+                                        suggested: correction.suggested,
+                                        errorType: correction.errorType
+                                    ))
+                                }
+                            }
+
+                            // Update UI with accumulated corrections
+                            await MainActor.run {
+                                grammarCorrectionsCount = allCorrections.count
+                                var outputText = ""
+                                for correction in allCorrections {
+                                    outputText += "Original: \(correction.original)\n"
+                                    outputText += "Suggested: \(correction.suggested)\n\n"
+                                }
+                                grammarText = outputText
+                            }
+                        }
+                    }
+                } // End of for loop
+            } else {
+                await MainActor.run {
+                    grammarText = "AI Grammar Check requires macOS 15.1 (Tahoe) or later."
+                }
+            }
+
+            await MainActor.run {
+                isGrammarChecking = false
+                grammarProgress = "Completed"
+                grammarCurrentPage = grammarTotalPages
+
+                if allCorrections.isEmpty {
+                    grammarText = "✓ Grammar check completed. No errors found! Your document looks great."
+                } else {
+                    // Final summary at the top
+                    var summaryText = "Grammar Check Complete\n"
+                    summaryText += "Found \(allCorrections.count) correction\(allCorrections.count == 1 ? "" : "s")\n"
+                    summaryText += String(repeating: "=", count: 50) + "\n\n"
+
+                    for correction in allCorrections {
+                        summaryText += "Original: \(correction.original)\n"
+                        summaryText += "Suggested: \(correction.suggested)\n\n"
+                    }
+
+                    grammarText = summaryText
+                }
+            }
+        }
+    }
+
+    @available(macOS 26.0, *)
+    private func proofreadChunk(prompt: String) async -> String? {
+        // This helper is now redundant as we reuse the session in the loop above
+        return nil
+    }
+
 
     private func extractTextFromPDF() {
         let checkedFiles = selectedFiles.filter { $0.isChecked }
