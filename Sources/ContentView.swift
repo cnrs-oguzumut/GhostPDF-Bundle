@@ -135,6 +135,11 @@ struct ContentView: View {
     @State private var summaryText: String = ""
     @State private var isSummarizing: Bool = false
     
+    // AI Chat State
+    @State private var qnaInput: String = ""
+    @State private var chatHistory: [(role: String, content: String)] = []
+    @State private var isThinking: Bool = false
+    
     // Researcher Tab State (separate from AI tab)
     @SceneStorage("researcherOutputText") private var researcherOutputText: String = ""
     @State private var isResearcherProcessing: Bool = false
@@ -437,7 +442,10 @@ struct ContentView: View {
             selectedFiles: $selectedFiles,
             summaryType: $summaryType,
             summaryText: $summaryText,
-            isSummarizing: $isSummarizing
+            isSummarizing: $isSummarizing,
+            qnaInput: $qnaInput,
+            chatHistory: $chatHistory,
+            isThinking: $isThinking
         )
     }
     
@@ -3627,6 +3635,10 @@ struct AITabView: View {
     @Binding var summaryType: SummaryType
     @Binding var summaryText: String
     @Binding var isSummarizing: Bool
+    @Binding var qnaInput: String
+    @Binding var chatHistory: [(role: String, content: String)]
+    @Binding var isThinking: Bool
+
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
     @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
     @AppStorage("shortenAuthors") private var shortenAuthors = false
@@ -3636,6 +3648,9 @@ struct AITabView: View {
     @State private var activeAction: AIAction? = nil
     @State private var extractedText: String = ""
     @State private var showWritingToolsHelp: Bool = false
+    @State private var relatedWorkTopic: String = ""
+    @State private var relatedWorkOutput: String = ""
+    @State private var isSearchingRelatedWork: Bool = false
 
     enum AIAction {
         case summary
@@ -3745,28 +3760,200 @@ struct AITabView: View {
                     }
                     
                     // Advanced AI Tools Card
+                    // Smart Q&A Chat Interface
                     GroupBox {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 0) {
                             HStack {
-                                Image(systemName: "brain")
-                                    .font(.system(size: 20))
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
                                     .foregroundColor(.blue)
-                                Text("Advanced AI Tools")
+                                Text("Chat with PDF")
                                     .font(.headline)
                                 Spacer()
-                            }
+                                if !chatHistory.isEmpty {
+                                    Button("Save Chat") {
+                                        saveConversation()
+                                    }
+                                    .font(.caption)
+                                    .buttonStyle(.plain)
+                                    .foregroundColor(.blue)
 
-                            Text("Coming soon: Question answering, document comparison, concept extraction, and more AI-powered features.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                    Button("Clear") {
+                                        chatHistory.removeAll()
+                                    }
+                                    .font(.caption)
+                                    .buttonStyle(.plain)
+                                    .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.bottom, 8)
+
+                            // Chat Area
+                            ScrollViewReader { scrollProxy in
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        if chatHistory.isEmpty {
+                                            Text("Ask questions about your PDF. The AI will analyze the text to provide answers.")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .frame(maxWidth: .infinity, alignment: .center)
+                                                .padding(.top, 40)
+                                        } else {
+                                            ForEach(0..<chatHistory.count, id: \.self) { i in
+                                                let msg = chatHistory[i]
+                                                HStack(alignment: .top, spacing: 8) {
+                                                    if msg.role == "System" {
+                                                        Image(systemName: "sparkles")
+                                                            .foregroundColor(.purple)
+                                                            .font(.system(size: 14))
+                                                            .padding(.top, 4)
+                                                    }
+
+                                                    VStack(alignment: .leading, spacing: 4) {
+                                                        Text(msg.content)
+                                                            .textSelection(.enabled)
+                                                            .padding(10)
+                                                            .background(msg.role == "User" ? Color.blue.opacity(0.1) : Color(NSColor.textBackgroundColor))
+                                                            .cornerRadius(12)
+                                                            .overlay(
+                                                                RoundedRectangle(cornerRadius: 12)
+                                                                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                                            )
+
+                                                        Button(action: {
+                                                            NSPasteboard.general.clearContents()
+                                                            NSPasteboard.general.setString(msg.content, forType: .string)
+                                                        }) {
+                                                            Label("Copy", systemImage: "doc.on.doc")
+                                                                .font(.caption2)
+                                                                .foregroundColor(.secondary)
+                                                        }
+                                                        .buttonStyle(.plain)
+                                                        .padding(.leading, 10)
+                                                    }
+
+                                                    if msg.role == "User" {
+                                                        Image(systemName: "person.circle.fill")
+                                                            .foregroundColor(.blue)
+                                                            .font(.system(size: 14))
+                                                            .padding(.top, 4)
+                                                    }
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: msg.role == "User" ? .trailing : .leading)
+                                                .id(i)
+                                            }
+                                        }
+                                    }
+                                    .padding()
+                                }
+                                .frame(height: 300)
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(8)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                                .onChange(of: chatHistory.count) { _ in
+                                    if let last = chatHistory.indices.last {
+                                        withAnimation {
+                                            scrollProxy.scrollTo(last, anchor: .bottom)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Input Area
+                            HStack {
+                                TextField("Ask a question...", text: $qnaInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .disabled(isThinking || selectedFiles.isEmpty)
+                                    .onSubmit {
+                                        Task {
+                                            await performQnA()
+                                        }
+                                    }
+                                
+                                Button(action: {
+                                    Task {
+                                        await performQnA()
+                                    }
+                                }) {
+                                    if isThinking {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "arrow.up.circle.fill")
+                                            .font(.title2)
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(qnaInput.isEmpty || isThinking || selectedFiles.isEmpty)
+                            }
+                            .padding(.top, 8)
                         }
                         .padding(12)
                     }
-                    .opacity(0.6)
                 }
                 .padding(.horizontal)
 
+                // Related Work Finder
+                GroupBox {
+                    VStack(spacing: 12) {
+                        HStack {
+                            Image(systemName: "link.circle.fill")
+                                .foregroundColor(.orange)
+                            Text("Related Work Finder")
+                                .font(.headline)
+                            Spacer()
+                            if !relatedWorkOutput.isEmpty {
+                                Button("Clear") {
+                                    relatedWorkOutput = ""
+                                    relatedWorkTopic = ""
+                                }
+                                .font(.caption)
+                                .buttonStyle(.plain)
+                                .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.bottom, 8)
+
+                        Text("Find papers cited in your PDF that discuss a specific topic")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        HStack {
+                            TextField("Topic (e.g., 'deep learning', 'climate change')", text: $relatedWorkTopic)
+                                .textFieldStyle(.roundedBorder)
+                                .disabled(isSearchingRelatedWork || selectedFiles.isEmpty)
+
+                            Button(action: {
+                                Task {
+                                    await findRelatedWork()
+                                }
+                            }) {
+                                if isSearchingRelatedWork {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Label("Find", systemImage: "magnifyingglass")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(relatedWorkTopic.isEmpty || isSearchingRelatedWork || selectedFiles.isEmpty)
+                        }
+
+                        if !relatedWorkOutput.isEmpty {
+                            ScrollView {
+                                Text(relatedWorkOutput)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding()
+                            }
+                            .frame(height: 200)
+                            .background(Color(NSColor.textBackgroundColor))
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                        }
+                    }
+                    .padding(12)
+                }
+                .padding(.horizontal)
 
                 // Output Area
                 GroupBox("AI Summary Output") {
@@ -4152,6 +4339,151 @@ struct AITabView: View {
             result += paragraphs.joined(separator: "\n\n")
             return result
         }
+    }
+
+    // MARK: - Q&A Function
+    func performQnA() async {
+        guard !qnaInput.isEmpty, !selectedFiles.isEmpty else { return }
+
+        let question = qnaInput
+        qnaInput = ""
+        chatHistory.append((role: "User", content: question))
+        isThinking = true
+
+        // Extract text from PDF
+        guard let pdfURL = selectedFiles.first?.url,
+              let doc = PDFDocument(url: pdfURL) else {
+            chatHistory.append((role: "System", content: "Error: Could not load PDF"))
+            isThinking = false
+            return
+        }
+
+        var fullText = ""
+        // Limit to first 5 pages and 6000 chars to stay within context window
+        for i in 0..<min(5, doc.pageCount) {
+            if let page = doc.page(at: i), let pageText = page.string {
+                fullText += pageText + "\n\n"
+                if fullText.count > 6000 { break }
+            }
+        }
+
+        // Use FoundationModels for Q&A
+        if #available(macOS 26.0, *) {
+            do {
+                let session = LanguageModelSession()
+                // Keep prompt minimal to avoid context overflow
+                let limitedText = String(fullText.prefix(6000))
+                let prompt = """
+                Answer this question based on the PDF text below. Be concise.
+
+                Text: \(limitedText)
+
+                Q: \(question)
+                A:
+                """
+
+                let response = try await session.respond(to: prompt)
+                chatHistory.append((role: "Assistant", content: response.content))
+            } catch {
+                chatHistory.append((role: "System", content: "Error: \(error.localizedDescription)"))
+            }
+        } else {
+            chatHistory.append((role: "System", content: "Q&A requires macOS 26+"))
+        }
+
+        isThinking = false
+    }
+
+    // MARK: - Save Conversation
+    func saveConversation() {
+        guard !chatHistory.isEmpty else { return }
+
+        // Format conversation as text
+        var conversationText = "PDF Q&A Conversation\n"
+        conversationText += "Generated: \(Date().formatted())\n"
+        conversationText += String(repeating: "=", count: 50) + "\n\n"
+
+        for msg in chatHistory {
+            conversationText += "[\(msg.role)]:\n"
+            conversationText += msg.content + "\n\n"
+        }
+
+        // Show save dialog
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.plainText]
+        savePanel.nameFieldStringValue = "PDF_QA_Chat.txt"
+        savePanel.message = "Save conversation as text file"
+
+        savePanel.begin { response in
+            if response == .OK, let url = savePanel.url {
+                do {
+                    try conversationText.write(to: url, atomically: true, encoding: .utf8)
+                } catch {
+                    print("Failed to save conversation: \(error)")
+                }
+            }
+        }
+    }
+
+    // MARK: - Related Work Finder
+    func findRelatedWork() async {
+        guard !relatedWorkTopic.isEmpty, !selectedFiles.isEmpty else { return }
+
+        isSearchingRelatedWork = true
+        relatedWorkOutput = ""
+
+        // Extract references section from PDF
+        guard let pdfURL = selectedFiles.first?.url,
+              let doc = PDFDocument(url: pdfURL) else {
+            relatedWorkOutput = "Error: Could not load PDF"
+            isSearchingRelatedWork = false
+            return
+        }
+
+        // Extract text focusing on references/bibliography section
+        var fullText = ""
+        var referencesText = ""
+
+        for i in 0..<doc.pageCount {
+            if let page = doc.page(at: i), let pageText = page.string {
+                fullText += pageText + "\n\n"
+
+                // Look for references section
+                if pageText.contains("References") || pageText.contains("Bibliography") ||
+                   pageText.contains("REFERENCES") || pageText.contains("Works Cited") {
+                    referencesText += pageText + "\n\n"
+                }
+            }
+        }
+
+        // Use FoundationModels to find related work
+        if #available(macOS 26.0, *) {
+            do {
+                let session = LanguageModelSession()
+                let textToAnalyze = referencesText.isEmpty ? String(fullText.prefix(10000)) : String(referencesText.prefix(10000))
+
+                let prompt = """
+                Find and list papers from the references below that discuss "\(relatedWorkTopic)".
+
+                For each relevant paper, provide:
+                - Authors and year
+                - Title
+                - Brief note on how it relates to \(relatedWorkTopic)
+
+                References:
+                \(textToAnalyze)
+                """
+
+                let response = try await session.respond(to: prompt)
+                relatedWorkOutput = response.content
+            } catch {
+                relatedWorkOutput = "Error: \(error.localizedDescription)"
+            }
+        } else {
+            relatedWorkOutput = "Related Work Finder requires macOS 26+"
+        }
+
+        isSearchingRelatedWork = false
     }
 }
 
@@ -5944,6 +6276,52 @@ struct SquareActionCard: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.5 : 1.0)
+    }
+}
+
+// MARK: - AI Q&A Logic
+
+extension ContentView {
+    @MainActor
+    func performQnA() async {
+        guard !qnaInput.isEmpty else { return }
+        guard let file = selectedFiles.first else { return }
+        
+        // 1. Add User Message
+        let question = qnaInput
+        chatHistory.append((role: "User", content: question))
+        qnaInput = ""
+        isThinking = true
+        
+        // 2. Extract Text Context (reuse existing logic or helper)
+        // We'll extract text on the fly if not already available in a state, 
+        // or just re-extract to be safe/simple for this MVP.
+        // Using `PDFCompressor.extractText`
+        
+        var context = ""
+        if let doc = PDFDocument(url: file.url) {
+            context = doc.string ?? ""
+        }
+        
+        if context.isEmpty {
+            chatHistory.append((role: "System", content: "Error: Could not extract text from this PDF. It might be scanned or encrypted."))
+            isThinking = false
+            return
+        }
+        
+        // 3. Call AI Backend
+        do {
+            if #available(macOS 26.0, *) {
+                let answer = try await answerQuestionWithAI(question: question, context: context)
+                chatHistory.append((role: "System", content: answer))
+            } else {
+                chatHistory.append((role: "System", content: "AI Chat requires macOS 26.0 or later."))
+            }
+        } catch {
+            chatHistory.append((role: "System", content: "Error: \(error.localizedDescription)"))
+        }
+        
+        isThinking = false
     }
 }
 

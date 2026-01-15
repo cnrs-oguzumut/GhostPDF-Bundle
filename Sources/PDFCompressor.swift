@@ -301,6 +301,39 @@ func extractCaptionsWithAI(from text: String) async -> [AIExtractedCaption]? {
     }
 }
 
+// MARK: - AI Question Answering
+
+/// Answer a user question based on the provided PDF context using Apple Foundation Models
+@available(macOS 26.0, *)
+func answerQuestionWithAI(question: String, context: String) async throws -> String {
+    // Limit context to avoid token limits (conservatively ~20k chars)
+    let limitedContext: String
+    if context.count > 25000 {
+        // Prioritize the beginning and potentially search for keywords? 
+        // For now, just truncating to safe limit.
+        limitedContext = String(context.prefix(25000)) + "\n...(truncated)..."
+    } else {
+        limitedContext = context
+    }
+    
+    let prompt = """
+    You are a helpful academic assistant analyzing a PDF document.
+    Answer the user's question based ONLY on the provided document context below.
+    If the answer is not in the context, say "I cannot find the answer in the document."
+    Keep your answer concise and relevant.
+
+    Document Context:
+    \(limitedContext)
+
+    User Question:
+    \(question)
+    """
+    
+    let session = LanguageModelSession()
+    let response = try await session.respond(to: prompt)
+    return response.content
+}
+
 
 
 // Helper for Image Extraction
