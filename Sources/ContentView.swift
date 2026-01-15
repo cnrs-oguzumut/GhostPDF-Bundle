@@ -4674,59 +4674,94 @@ struct AITabView: View {
                             ? "UK English spelling (e.g., -ise, -our, -re) and punctuation (single quotes)"
                             : "US English spelling (e.g., -ize, -or, -er) and punctuation (double quotes)"
 
-                        let systemPrompt = """
-                        You are a meticulous academic editor. Find and fix EVERY grammar, spelling, and punctuation error.
-                        Focus on: structural grammar (subject-verb agreement), spelling errors, merged/glued words (missing spaces), and punctuation.
+                        // Split text into chunks if too large (context limit ~4096 tokens = ~3000 chars)
+                        let maxChunkSize = 3000
+                        var textChunks: [String] = []
 
-                        Use \(regionalInstruction).
+                        if pageText.count > maxChunkSize {
+                            // Split by sentences to avoid breaking mid-sentence
+                            let sentences = pageText.components(separatedBy: ". ")
+                            var currentChunk = ""
 
-                        Analyze this text and return ALL corrections found. If no errors exist, return an empty corrections array.
-
-                        TEXT:
-                        \(pageText)
-                        """
-
-                        // Retry logic with structured output
-                        var pageCorrections: GrammarCheckResult? = nil
-                        let maxRetries = 3
-
-                        for attempt in 1...maxRetries {
-                            if Task.isCancelled { break }
-
-                            if attempt > 1 {
-                                await MainActor.run {
-                                    grammarProgress = "Retrying page \(pageIndex + 1)... (Attempt \(attempt)/\(maxRetries))"
-                                }
-                            }
-
-                            do {
-                                // Use structured output for reliable parsing
-                                let response = try await session.respond(to: systemPrompt, generating: GrammarCheckResult.self)
-                                pageCorrections = response.content
-
-                                // Success - break retry loop
-                                if !pageCorrections!.corrections.isEmpty {
-                                    await MainActor.run {
-                                        grammarProgress = "Found \(pageCorrections!.corrections.count) error(s) on page \(pageIndex + 1)"
-                                    }
-                                }
-                                break
-                            } catch {
-                                print("AI Grammar check attempt \(attempt) failed for page \(pageIndex + 1): \(error)")
-                                if attempt == maxRetries {
-                                    await MainActor.run {
-                                        grammarProgress = "Failed to analyze page \(pageIndex + 1) after \(maxRetries) attempts"
-                                    }
+                            for sentence in sentences {
+                                if (currentChunk + sentence).count > maxChunkSize && !currentChunk.isEmpty {
+                                    textChunks.append(currentChunk)
+                                    currentChunk = sentence + ". "
                                 } else {
-                                    // Small delay before retry
-                                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                                    currentChunk += sentence + ". "
                                 }
                             }
+                            if !currentChunk.isEmpty {
+                                textChunks.append(currentChunk)
+                            }
+                        } else {
+                            textChunks = [pageText]
                         }
 
-                        // Process corrections
-                        if let corrections = pageCorrections?.corrections, !corrections.isEmpty {
-                            for correction in corrections {
+                        // Process each chunk
+                        var allChunkCorrections: [GrammarCorrection] = []
+
+                        for (chunkIndex, chunk) in textChunks.enumerated() {
+                            if Task.isCancelled { break }
+
+                            if textChunks.count > 1 {
+                                await MainActor.run {
+                                    grammarProgress = "Analyzing page \(pageIndex + 1) chunk \(chunkIndex + 1)/\(textChunks.count)..."
+                                }
+                            }
+
+                            let systemPrompt = """
+                            You are a meticulous academic editor. Find and fix EVERY grammar, spelling, and punctuation error.
+                            Focus on: structural grammar (subject-verb agreement), spelling errors, merged/glued words (missing spaces), and punctuation.
+
+                            Use \(regionalInstruction).
+
+                            Analyze this text and return ALL corrections found. If no errors exist, return an empty corrections array.
+
+                            TEXT:
+                            \(chunk)
+                            """
+
+                            // Retry logic with structured output
+                            var chunkCorrections: GrammarCheckResult? = nil
+                            let maxRetries = 3
+
+                            for attempt in 1...maxRetries {
+                                if Task.isCancelled { break }
+
+                                if attempt > 1 {
+                                    await MainActor.run {
+                                        grammarProgress = "Retrying page \(pageIndex + 1) chunk \(chunkIndex + 1)... (Attempt \(attempt)/\(maxRetries))"
+                                    }
+                                }
+
+                                do {
+                                    // Use structured output for reliable parsing
+                                    let response = try await session.respond(to: systemPrompt, generating: GrammarCheckResult.self)
+                                    chunkCorrections = response.content
+                                    break // Success - break retry loop
+                                } catch {
+                                    print("AI Grammar check attempt \(attempt) failed for page \(pageIndex + 1) chunk \(chunkIndex + 1): \(error)")
+                                    if attempt == maxRetries {
+                                        await MainActor.run {
+                                            grammarProgress = "Failed to analyze page \(pageIndex + 1) chunk \(chunkIndex + 1) after \(maxRetries) attempts"
+                                        }
+                                    } else {
+                                        // Small delay before retry
+                                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                                    }
+                                }
+                            }
+
+                            // Collect corrections from this chunk
+                            if let corrections = chunkCorrections?.corrections {
+                                allChunkCorrections.append(contentsOf: corrections)
+                            }
+                        } // End of chunk loop
+
+                        // Process all corrections from all chunks of this page
+                        if !allChunkCorrections.isEmpty {
+                            for correction in allChunkCorrections {
                                 // Validate that original and suggested are actually different
                                 if correction.original.lowercased() != correction.suggested.lowercased() {
                                     allCorrections.append((
@@ -4740,6 +4775,7 @@ struct AITabView: View {
                             // Update UI with accumulated corrections
                             await MainActor.run {
                                 grammarCorrectionsCount = allCorrections.count
+                                grammarProgress = "Found \(allChunkCorrections.count) error(s) on page \(pageIndex + 1)"
                                 var outputText = ""
                                 for correction in allCorrections {
                                     outputText += "Original: \(correction.original)\n"
@@ -4749,7 +4785,7 @@ struct AITabView: View {
                             }
                         }
                     }
-                } // End of for loop
+                } // End of page loop
             } else {
                 await MainActor.run {
                     grammarText = "AI Grammar Check requires macOS 15.1 (Tahoe) or later."
