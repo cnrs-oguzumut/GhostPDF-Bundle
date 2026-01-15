@@ -3796,6 +3796,7 @@ struct AITabView: View {
     @State private var relatedWorkTopic: String = ""
     @State private var relatedWorkOutput: String = ""
     @State private var isSearchingRelatedWork: Bool = false
+    @State private var relatedWorkAutoMode: Bool = true // Auto-detect vs manual topic
     @State private var currentGrammarTask: Task<Void, Never>? = nil // Handle for cancellation
 
     // Grammar check enhancements
@@ -4219,51 +4220,92 @@ struct AITabView: View {
         // Related Work Finder
         GroupBox {
             VStack(spacing: 12) {
-                if !relatedWorkOutput.isEmpty {
-                    HStack {
-                        Spacer()
-                        Button("Clear") {
-                            relatedWorkOutput = ""
-                            relatedWorkTopic = ""
-                        }
-                        .font(.caption)
-                        .buttonStyle(.plain)
+                // Mode Toggle
+                HStack {
+                    Text("Find papers related to:")
                         .foregroundColor(.secondary)
-                    }
-                    .padding(.bottom, 8)
+                        .font(.subheadline)
+                    Spacer()
                 }
 
-                HStack {
-                    TextField("Topic (e.g., 'deep learning', 'climate change')", text: $relatedWorkTopic)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(isSearchingRelatedWork || selectedFiles.isEmpty)
+                Picker("Mode", selection: $relatedWorkAutoMode) {
+                    Text("This paper's topics").tag(true)
+                    Text("Specific topic").tag(false)
+                }
+                .pickerStyle(.segmented)
 
-                    Button(action: {
-                        Task {
-                            await findRelatedWork()
-                        }
-                    }) {
+                // Manual topic input (only shown in manual mode)
+                if !relatedWorkAutoMode {
+                    HStack {
+                        TextField("Enter topic (e.g., 'deep learning', 'climate change')", text: $relatedWorkTopic)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isSearchingRelatedWork || selectedFiles.isEmpty)
+                    }
+                }
+
+                // Action button
+                Button(action: {
+                    Task {
+                        await findRelatedWork()
+                    }
+                }) {
+                    HStack {
                         if isSearchingRelatedWork {
                             ProgressView().controlSize(.small)
+                            Text("Analyzing...")
                         } else {
-                            Label("Find", systemImage: "magnifyingglass")
+                            Image(systemName: "link.circle.fill")
+                            if relatedWorkAutoMode {
+                                Text("Find Related Papers")
+                            } else {
+                                Text("Search References")
+                            }
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(relatedWorkTopic.isEmpty || isSearchingRelatedWork || selectedFiles.isEmpty)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .disabled(isSearchingRelatedWork || selectedFiles.isEmpty || (!relatedWorkAutoMode && relatedWorkTopic.isEmpty))
 
+                Text(relatedWorkAutoMode
+                    ? "Automatically analyzes your paper and finds related work from the references"
+                    : "Search for papers on a specific topic in the references section")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+
+                // Output display
                 if !relatedWorkOutput.isEmpty {
-                    ScrollView {
-                        Text(relatedWorkOutput)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Results")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Button("Clear") {
+                                relatedWorkOutput = ""
+                                relatedWorkTopic = ""
+                            }
+                            .font(.caption)
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
+                        }
+
+                        ScrollView {
+                            Text(relatedWorkOutput)
+                                .textSelection(.enabled)
+                                .font(.system(.body))
+                                .lineSpacing(4)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        }
+                        .frame(height: 250)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
                     }
-                    .frame(height: 200)
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(8)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
                 }
             }
             .padding(12)
@@ -5054,12 +5096,14 @@ struct AITabView: View {
 
     // MARK: - Related Work Finder
     func findRelatedWork() async {
-        guard !relatedWorkTopic.isEmpty, !selectedFiles.isEmpty else { return }
+        // Auto mode doesn't need manual topic
+        guard relatedWorkAutoMode || !relatedWorkTopic.isEmpty else { return }
+        guard !selectedFiles.isEmpty else { return }
 
         isSearchingRelatedWork = true
         relatedWorkOutput = ""
 
-        // Extract references section from PDF
+        // Extract text from PDF
         guard let pdfURL = selectedFiles.first?.url,
               let doc = PDFDocument(url: pdfURL) else {
             relatedWorkOutput = "Error: Could not load PDF"
@@ -5067,17 +5111,31 @@ struct AITabView: View {
             return
         }
 
-        // Extract text focusing on references/bibliography section
-        var fullText = ""
+        // Extract different sections
+        var abstractText = ""
+        var introductionText = ""
         var referencesText = ""
+        var fullText = ""
 
         for i in 0..<doc.pageCount {
             if let page = doc.page(at: i), let pageText = page.string {
                 fullText += pageText + "\n\n"
 
-                // Look for references section
-                if pageText.contains("References") || pageText.contains("Bibliography") ||
-                   pageText.contains("REFERENCES") || pageText.contains("Works Cited") {
+                let lowerText = pageText.lowercased()
+
+                // Extract abstract (usually on first 2 pages)
+                if i < 2 && (lowerText.contains("abstract") || lowerText.contains("summary")) {
+                    abstractText += pageText + "\n\n"
+                }
+
+                // Extract introduction
+                if lowerText.contains("introduction") || lowerText.contains("1.") && i < 5 {
+                    introductionText += pageText + "\n\n"
+                }
+
+                // Extract references section
+                if lowerText.contains("references") || lowerText.contains("bibliography") ||
+                   lowerText.contains("works cited") {
                     referencesText += pageText + "\n\n"
                 }
             }
@@ -5087,19 +5145,51 @@ struct AITabView: View {
         if #available(macOS 26.0, *) {
             do {
                 let session = LanguageModelSession()
-                let textToAnalyze = referencesText.isEmpty ? String(fullText.prefix(10000)) : String(referencesText.prefix(10000))
 
-                let prompt = """
-                Find and list papers from the references below that discuss "\(relatedWorkTopic)".
+                let prompt: String
+                if relatedWorkAutoMode {
+                    // Auto mode: analyze the paper to find related work
+                    let contextText = !abstractText.isEmpty ? String(abstractText.prefix(3000)) :
+                                     !introductionText.isEmpty ? String(introductionText.prefix(3000)) :
+                                     String(fullText.prefix(3000))
 
-                For each relevant paper, provide:
-                - Authors and year
-                - Title
-                - Brief note on how it relates to \(relatedWorkTopic)
+                    let refsText = !referencesText.isEmpty ? String(referencesText.prefix(8000)) : String(fullText.suffix(8000))
 
-                References:
-                \(textToAnalyze)
-                """
+                    prompt = """
+                    Based on this research paper's content, identify and list the most relevant papers from its references.
+
+                    PAPER CONTEXT (Abstract/Introduction):
+                    \(contextText)
+
+                    REFERENCES SECTION:
+                    \(refsText)
+
+                    TASK:
+                    1. First, identify the main research topics/themes of this paper (2-3 key areas)
+                    2. Then, from the references, find 5-8 papers that are most relevant to these topics
+                    3. For each paper, provide:
+                       - Authors and year
+                       - Title
+                       - Why it's relevant (1 sentence explaining its connection to this paper's research)
+
+                    Format your response clearly with the main topics at the top, then the relevant papers below.
+                    """
+                } else {
+                    // Manual mode: search for specific topic
+                    let refsText = !referencesText.isEmpty ? String(referencesText.prefix(10000)) : String(fullText.suffix(10000))
+
+                    prompt = """
+                    Find and list papers from the references below that are related to "\(relatedWorkTopic)".
+
+                    For each relevant paper, provide:
+                    - Authors and year
+                    - Title
+                    - Brief explanation of how it relates to \(relatedWorkTopic)
+
+                    REFERENCES:
+                    \(refsText)
+                    """
+                }
 
                 let response = try await session.respond(to: prompt)
                 relatedWorkOutput = response.content
