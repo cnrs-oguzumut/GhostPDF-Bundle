@@ -6,6 +6,7 @@ import CoreGraphics
 import ImageIO
 import NaturalLanguage
 import FoundationModels
+import Vision
 
 // MARK: - AI-Powered Metadata Extraction Models
 
@@ -235,6 +236,72 @@ private func formatReferenceToBibTeX(_ ref: AIExtractedReference, index: Int, op
     
     return bib
 }
+
+// MARK: - AI-Powered Caption Extraction
+
+/// Struct for a single extracted figure/table caption
+@available(macOS 26.0, *)
+@Generable
+struct AIExtractedCaption {
+    @Guide(description: "The type of the item: 'Figure', 'Table', 'Scheme', or 'Chart'.")
+    let type: String
+    
+    @Guide(description: "The number or identifier (e.g., '1', '2a', 'IV').")
+    let number: String
+    
+    @Guide(description: "The full text of the caption/description.")
+    let text: String
+    
+    @Guide(description: "The page number where this caption appears (if inferable from text context), otherwise 0.")
+    let page: Int
+}
+
+/// Container for multiple captions extracted by AI
+@available(macOS 26.0, *)
+@Generable
+struct AIExtractedCaptions {
+    @Guide(description: "List of all figure and table captions found in the text.")
+    let captions: [AIExtractedCaption]
+}
+
+/// Extract figure/table captions from PDF text using Apple Foundation Models (macOS 26+)
+@available(macOS 26.0, *)
+@available(macOS 26.0, *)
+func extractCaptionsWithAI(from text: String) async -> [AIExtractedCaption]? {
+    do {
+        // Captions can be anywhere, but context window is limited.
+        // We'll take a large chunk from the beginning and maybe some from end?
+        // Actually, for captions, simpler is better: take as much as fits.
+        let limitedText: String
+        if text.count > 25000 {
+            limitedText = String(text.prefix(25000))
+        } else {
+            limitedText = text
+        }
+        
+        let prompt = """
+        Extract all Figure and Table captions from this academic paper text.
+        Look for patterns like "Figure 1: ...", "Fig. 2.", "Table 1 ...".
+        Extract the full caption text for each.
+        
+        Document text:
+        \(limitedText)
+        """
+        
+        print("DEBUG - extractCaptionsWithAI: Creating session...")
+        let session = LanguageModelSession()
+        print("DEBUG - extractCaptionsWithAI: Calling respond with structured output...")
+        let response = try await session.respond(to: prompt, generating: AIExtractedCaptions.self)
+        print("DEBUG - extractCaptionsWithAI: Success! Got \(response.content.captions.count) captions.")
+        
+        return response.content.captions
+    } catch {
+        print("AI caption extraction failed: \(error)")
+        return nil
+    }
+}
+
+
 
 // Helper for Image Extraction
 class ImageExtractionContext {
@@ -1640,22 +1707,22 @@ class PDFCompressor {
     
     static func extractEmbeddedImages(input: URL, outputDir: URL, password: String? = nil, progress: @escaping (Double) -> Void) async throws {
         guard let doc = CGPDFDocument(input as CFURL) else { throw CompressionError.fileNotFound }
-        
+
         if doc.isEncrypted {
             if !doc.unlockWithPassword(password ?? "") { throw CompressionError.passwordRequired }
         }
-        
+
         let pageCount = doc.numberOfPages
         guard pageCount > 0 else { return }
-        
+
         // Context for the callback
         let context = ImageExtractionContext(outputDir: outputDir)
-        
+
         for i in 1...pageCount {
             guard let page = doc.page(at: i) else { continue }
             context.currentPage = i
             context.imageIndexOnPage = 0
-            
+
             if let pageDict = page.dictionary {
                 var resDict: CGPDFDictionaryRef? = nil
                 if CGPDFDictionaryGetDictionary(pageDict, "Resources", &resDict), let resources = resDict {
@@ -1663,7 +1730,7 @@ class PDFCompressor {
                     scanXObjects(resources: resources, context: context)
                 }
             }
-            
+
             progress(Double(i) / Double(pageCount))
             // Yield to main thread
             await Task.yield()

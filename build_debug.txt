@@ -1,0 +1,100 @@
+Building GhostPDF+ Beta...
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling GhostPDF_ CitationFormatter.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:5954:38: error: cannot find type 'FileItem' in scope
+5952 | extension ContentView {
+5953 |     @MainActor
+5954 |     func saveManualRegions(for file: FileItem, regions: [PageRegion]) async {
+     |                                      `- error: cannot find type 'FileItem' in scope
+5955 |         guard !regions.isEmpty else { return }
+5956 |         
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:5980:44: error: cannot infer contextual base in reference to member 'mediaBox'
+5978 |             
+5979 |             // Coordinate Conversion
+5980 |             let pdfBox = page.bounds(for: .mediaBox)
+     |                                            `- error: cannot infer contextual base in reference to member 'mediaBox'
+5981 |             let pdfW = pdfBox.width
+5982 |             let pdfH = pdfBox.height
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:5993:28: error: cannot convert value of type 'CGFloat' to expected argument type 'Duration'
+5991 |             
+5992 |             let offsetX = (viewW - renderedW) / 2
+5993 |             let offsetY = (viewH - (pdfH * scale)) / 2
+     |                            `- error: cannot convert value of type 'CGFloat' to expected argument type 'Duration'
+5994 |             
+5995 |             // Region in View Coords (Origin Top-Left)
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:6006:39: error: operator argument #2 must precede operator argument #1
+6004 |             let normY = rectY_rendered / (pdfH * scale)
+6005 |             let normW = rect.width / renderedW
+6006 |             let normH = rect.height / (pdfH * scale)
+     |                                       `- error: operator argument #2 must precede operator argument #1
+6007 |             
+6008 |             // Render High Resolution Image
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:6015:67: error: cannot infer contextual base in reference to member 'mediaBox'
+6013 |             let highResSize = CGSize(width: highResW, height: highResH)
+6014 |             
+6015 |             let fullImage = page.thumbnail(of: highResSize, for: .mediaBox)
+     |                                                                   `- error: cannot infer contextual base in reference to member 'mediaBox'
+6016 |             
+6017 |             // Calculate Crop Rect in High Res Image
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:6025:65: error: 'nil' requires a contextual type
+6023 |             let cropRect = CGRect(x: cropX, y: cropY, width: cropW, height: cropH)
+6024 |             
+6025 |             if let cgImage = fullImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+     |                                                                 `- error: 'nil' requires a contextual type
+6026 |                let cropped = cgImage.cropping(to: cropRect) {
+6027 |                 
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:6025:79: error: 'nil' requires a contextual type
+6023 |             let cropRect = CGRect(x: cropX, y: cropY, width: cropW, height: cropH)
+6024 |             
+6025 |             if let cgImage = fullImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+     |                                                                               `- error: 'nil' requires a contextual type
+6026 |                let cropped = cgImage.cropping(to: cropRect) {
+6027 |                 
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:6025:91: error: 'nil' requires a contextual type
+6023 |             let cropRect = CGRect(x: cropX, y: cropY, width: cropW, height: cropH)
+6024 |             
+6025 |             if let cgImage = fullImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+     |                                                                                           `- error: 'nil' requires a contextual type
+6026 |                let cropped = cgImage.cropping(to: cropRect) {
+6027 |                 
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:743:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 741 | 
+ 742 |     // First, try to extract DOI using unified logic
+ 743 |     var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 744 |     var arxivID = ""
+ 745 |     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:903:9: warning: variable 'number' was never mutated; consider changing to 'let' constant
+ 901 |     var journal = "Unknown Journal"
+ 902 |     var volume = ""
+ 903 |     var number = ""
+     |         `- warning: variable 'number' was never mutated; consider changing to 'let' constant
+ 904 |     var pages = ""
+ 905 |     var doi = extractedDOI // Use the DOI already extracted
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:905:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 903 |     var number = ""
+ 904 |     var pages = ""
+ 905 |     var doi = extractedDOI // Use the DOI already extracted
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 906 |     
+ 907 |     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2445:9: warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2443 |     
+2444 |     // 0. Try to find DOI using sophisticated logic
+2445 |     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+     |         `- warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2446 |     var docArXivID: String? = nil
+2447 |     

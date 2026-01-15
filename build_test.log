@@ -1,0 +1,242 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme GhostPDF+ -destination platform=macOS clean build
+
+Resolve Package Graph
+2026-01-14 17:26:28.639 xcodebuild[74944:2442360] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  GhostPDF+: /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:arm64, variant:DriverKit, id:00006000-0010092E0A92401E, name:My Mac }
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+** CLEAN SUCCEEDED **
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00006000-0010092E0A92401E, name:My Mac }
+{ platform:macOS, arch:arm64, variant:DriverKit, id:00006000-0010092E0A92401E, name:My Mac }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'GhostPDF+' in project 'GhostPDF+' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: 6fb9e7321c3014099200cffe302a9677
+Build description path: /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/XCBuildData/6fb9e7321c3014099200cffe302a9677.xcbuilddata
+CreateBuildDirectory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-create-build-directory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products
+
+CreateBuildDirectory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-create-build-directory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk /Users/usalman/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.2-25C57-00fa09913b459cbbc988d1f6730289ae.sdkstatcache
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -o /Users/usalman/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.2-25C57-00fa09913b459cbbc988d1f6730289ae.sdkstatcache
+Base directory status changed. Regenerating...
+
+CreateBuildDirectory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-create-build-directory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/ExplicitPrecompiledModules
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-create-build-directory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/EagerLinkingTBDs/Debug
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-create-build-directory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/EagerLinkingTBDs/Debug
+
+CreateBuildDirectory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-create-build-directory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug
+
+CreateBuildDirectory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/PackageFrameworks
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-create-build-directory /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/PackageFrameworks
+
+WriteAuxiliaryFile /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/GhostPDF+.DependencyStaticMetadataFileList (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    write-file /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/GhostPDF+.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/GhostPDF+.DependencyMetadataFileList (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    write-file /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/GhostPDF+.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.SwiftFileList (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    write-file /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.SwiftFileList
+
+WriteAuxiliaryFile /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.LinkFileList (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    write-file /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.LinkFileList
+
+WriteAuxiliaryFile /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+-OutputFileMap.json (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    write-file /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+_const_extract_protocols.json (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    write-file /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+_const_extract_protocols.json
+
+SwiftDriver GhostPDF+ normal arm64 com.apple.xcode.tools.swift.compiler (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name GhostPDF_ -Onone -enforce-exclusivity\=checked @/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -target arm64-apple-macos13.0 -g -module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/usalman/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.2-25C57-00fa09913b459cbbc988d1f6730289ae.sdkstatcache -output-file-map /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -package-name nanopdf_complete -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+_const_extract_protocols.json -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/include -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources-normal/arm64 -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources/arm64 -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/ExtensionFoundation-1UJMDTXD9YURBXYKMEC4ATIB2.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/BackgroundAssets-49GWHC5P9XLAQV9I0LQ3M3NLH.pcm
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ GhostPDF_ (in target 'GhostPDF+' from project 'GhostPDF+')
+
+EmitSwiftModule normal arm64 (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ TitleExtractionHelper.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/TitleExtractionHelper.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/TitleExtractionHelper.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ PDFCompressor.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:447:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+    var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+    ~~~ ^
+    let
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:592:9: warning: variable 'number' was never mutated; consider changing to 'let' constant
+    var number = ""
+    ~~~ ^
+    let
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:594:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+    var doi = extractedDOI // Use the DOI already extracted
+    ~~~ ^
+    let
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2134:9: warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+    var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+    ~~~ ^
+    let
+
+SwiftCompile normal arm64 Compiling\ CompressionPresets.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/CompressionPresets.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/CompressionPresets.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ComparisonView.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ComparisonView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ComparisonView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ContentView.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ NanoPDFApp.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/NanoPDFApp.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/NanoPDFApp.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ ThumbnailsView.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ThumbnailsView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ThumbnailsView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ CitationFormatter.swift /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/CitationFormatter.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftCompile normal arm64 /Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/CitationFormatter.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling NanoPDFApp.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriverJobDiscovery normal arm64 Compiling CompressionPresets.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ComparisonView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriverJobDiscovery normal arm64 Compiling TitleExtractionHelper.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriverJobDiscovery normal arm64 Compiling CitationFormatter.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for GhostPDF_ (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriver\ Compilation\ Requirements GhostPDF+ normal arm64 com.apple.xcode.tools.swift.compiler (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name GhostPDF_ -Onone -enforce-exclusivity\=checked @/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -target arm64-apple-macos13.0 -g -module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/usalman/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.2-25C57-00fa09913b459cbbc988d1f6730289ae.sdkstatcache -output-file-map /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -package-name nanopdf_complete -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+_const_extract_protocols.json -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/include -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources-normal/arm64 -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources/arm64 -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/arm64-apple-macos.swiftmodule /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftmodule (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftmodule /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/arm64-apple-macos.swiftmodule
+
+Copy /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/arm64-apple-macos.abi.json /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.abi.json (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.abi.json /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/arm64-apple-macos.abi.json
+
+Copy /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/arm64-apple-macos.swiftdoc /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftdoc (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftdoc /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/arm64-apple-macos.swiftdoc
+
+Copy /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftsourceinfo (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftsourceinfo /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF_.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo
+
+SwiftDriverJobDiscovery normal arm64 Compiling ThumbnailsView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriverJobDiscovery normal arm64 Compiling PDFCompressor.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ContentView.swift (in target 'GhostPDF+' from project 'GhostPDF+')
+
+SwiftDriver\ Compilation GhostPDF+ normal arm64 com.apple.xcode.tools.swift.compiler (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name GhostPDF_ -Onone -enforce-exclusivity\=checked @/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -target arm64-apple-macos13.0 -g -module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/usalman/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.2-25C57-00fa09913b459cbbc988d1f6730289ae.sdkstatcache -output-file-map /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/usalman/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -package-name nanopdf_complete -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+_const_extract_protocols.json -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/include -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources-normal/arm64 -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources/arm64 -Xcc -I/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF+ normal (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-macos13.0 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -O0 -L/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -L/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -F/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug -iframework /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -filelist /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @executable_path/../lib -Xlinker -object_path_lto -Xlinker /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF+_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_.swiftmodule @/Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Intermediates.noindex/GhostPDF+.build/Debug/GhostPDF+.build/Objects-normal/arm64/GhostPDF_-linker-args.resp -o /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF+
+
+RegisterExecutionPolicyException /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF+ (in target 'GhostPDF+' from project 'GhostPDF+')
+    cd /Users/usalman/pdf_compressor_store/NanoPDF-Complete
+    builtin-RegisterExecutionPolicyException /Users/usalman/Library/Developer/Xcode/DerivedData/NanoPDF-Complete-gsmgbwwuujcqohdnjaetxeyjvhdn/Build/Products/Debug/GhostPDF+
+
+** BUILD SUCCEEDED **
+

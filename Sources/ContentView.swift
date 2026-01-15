@@ -24,7 +24,8 @@ class NetworkMonitor: ObservableObject {
 enum ExtractMode: String, CaseIterable, Identifiable {
     case renderPage = "Render Page as Image"
     case extractEmbedded = "Extract Embedded Images"
-    
+    case manualSelection = "Manual Region Selection"
+
     var id: String { rawValue }
 }
 
@@ -90,7 +91,9 @@ struct ContentView: View {
     @State private var rasterDPI: Int = 150
     @State private var imageFormat: ImageFormat = .jpeg
     @State private var extractMode: ExtractMode = .renderPage
+
     @State private var imageDPI: Int = 150
+    @State private var showManualSelector: Bool = false
     @State private var splitMode: SplitMode = .extractSelected
     @State private var splitStartPage: Int = 1
     @State private var splitEndPage: Int = 1
@@ -370,6 +373,17 @@ struct ContentView: View {
                     .frame(minWidth: 800, minHeight: 600)
             }
         }
+        .sheet(isPresented: $showManualSelector) {
+            if let firstFile = selectedFiles.first(where: { $0.status == .pending }) {
+                ManualRegionSelector(pdfURL: firstFile.url) { regions in
+                    showManualSelector = false
+                    // Process regions for this file
+                    Task {
+                        await saveManualRegions(for: firstFile, regions: regions)
+                    }
+                }
+            }
+        }
 
         .alert(selectedTab == 4 ? "Operation Complete" : "Batch Complete", isPresented: $showingResult) {
             Button("Reveal in Finder") {
@@ -438,6 +452,7 @@ struct ContentView: View {
                 imageFormat: $imageFormat,
                 extractMode: $extractMode,
                 imageDPI: $imageDPI,
+                showManualSelector: $showManualSelector,
                 splitMode: $splitMode,
                 splitStartPage: $splitStartPage,
                 splitEndPage: $splitEndPage,
@@ -748,6 +763,7 @@ struct ContentView: View {
                                     }
                                 }
                             } else {
+                                // 1. Extract Embedded Images (raster images in PDF)
                                 try await PDFCompressor.extractEmbeddedImages(
                                     input: file.url,
                                     outputDir: fileFolder,
@@ -759,6 +775,8 @@ struct ContentView: View {
                                         totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
                                     }
                                 }
+
+                                // AI Extraction removed (User Request)
                             }
                             
                             await MainActor.run {
@@ -2629,6 +2647,7 @@ struct ToolsTabView: View {
     @Binding var imageFormat: ImageFormat
     @Binding var extractMode: ExtractMode
     @Binding var imageDPI: Int
+    @Binding var showManualSelector: Bool
     @Binding var splitMode: SplitMode
     @Binding var splitStartPage: Int
     @Binding var splitEndPage: Int
@@ -2644,6 +2663,7 @@ struct ToolsTabView: View {
     var splitThumbnailsCount: Int
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
 
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -2652,7 +2672,7 @@ struct ToolsTabView: View {
                 if selectedTool == .rasterize {
                     RasterizeSettingsView(rasterDPI: $rasterDPI)
                 } else if selectedTool == .extractImages {
-                    ExtractImagesSettingsView(imageFormat: $imageFormat, imageDPI: $imageDPI, extractMode: $extractMode)
+                    ExtractImagesSettingsView(imageFormat: $imageFormat, imageDPI: $imageDPI, extractMode: $extractMode, showManualSelector: $showManualSelector)
                 } else if selectedTool == .split {
                     SplitSettingsView(splitMode: $splitMode, splitStartPage: $splitStartPage, splitEndPage: $splitEndPage)
                 } else if selectedTool == .rotateDelete {
@@ -2737,6 +2757,7 @@ struct ExtractImagesSettingsView: View {
     @Binding var imageFormat: ImageFormat
     @Binding var imageDPI: Int
     @Binding var extractMode: ExtractMode
+    @Binding var showManualSelector: Bool
     
     var body: some View {
         GroupBox("Extraction Settings") {
@@ -2763,16 +2784,41 @@ struct ExtractImagesSettingsView: View {
                     }
                     
                     SliderRow(label: "Resolution", value: $imageDPI, range: 72...600, suffix: " dpi")
+                } else if extractMode == .manualSelection {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Manually select specific regions (plots, figures, tables) from PDF pages by drawing rectangles.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider()
+
+                        Button("Open Region Selector...") {
+                            showManualSelector = true
+                        }
+                        .padding(.top, 4)
+                    }
                 } else {
-                    Text("Extracts embedded images from the PDF (supports JPEG, PNG & CMYK). CMYK images are converted to RGB PNGs.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Extracts embedded images from the PDF (supports JPEG, PNG & CMYK). CMYK images are converted to RGB PNGs.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+
+                        Divider()
+                        
+                        Text("(No AI Mode)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
+                    }
                 }
             }
         }
     }
 }
+
 
 struct SplitSettingsView: View {
     @Binding var splitMode: SplitMode
@@ -5898,5 +5944,103 @@ struct SquareActionCard: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.5 : 1.0)
+    }
+}
+
+// MARK: - Manual Region Extraction Logic
+
+extension ContentView {
+    @MainActor
+    func saveManualRegions(for file: PDFFile, regions: [PageRegion]) async {
+        guard !regions.isEmpty else { return }
+        
+        // 1. Ask for output directory
+        await MainActor.run {
+             // Ensure this runs on Main Thread
+        }
+        
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Save Images"
+        panel.message = "Choose a folder to save extracted images"
+        
+        let response = await panel.beginSheetModal(for: NSApp.keyWindow ?? NSWindow())
+        guard response == .OK, let outputDir = panel.url else { return }
+        
+        // 2. Process
+        let pdfURL = file.url
+        // Use PDFDocument to extract
+        guard let document = PDFDocument(url: pdfURL) else { return }
+        
+        for (index, region) in regions.enumerated() {
+            guard let page = document.page(at: region.page) else { continue }
+            
+            // Coordinate Conversion
+            let pdfBox = page.bounds(for: PDFDisplayBox.mediaBox)
+            let pdfW = pdfBox.width
+            let pdfH = pdfBox.height
+            
+            let viewW = region.viewSize.width
+            let viewH = region.viewSize.height
+            
+            // Calculate how the page was scaled/positioned in the view
+            let scale = min(viewW / pdfW, viewH / pdfH)
+            let renderedW = pdfW * scale
+            let renderedH = pdfH * scale
+            
+            let offsetX = (viewW - renderedW) / 2.0
+            let offsetY = (viewH - renderedH) / 2.0
+            
+            // Region in View Coords (Origin Top-Left)
+            let rect = region.rect
+            
+            // Convert to Rendered Space (relative to actual image area top-left)
+            let rectX_rendered = rect.origin.x - offsetX
+            let rectY_rendered = rect.origin.y - offsetY
+            
+            // Convert to Normalized PDF Space (0..1)
+            let normX = rectX_rendered / renderedW
+            let normY = rectY_rendered / renderedH
+            let normW = rect.width / renderedW
+            let normH = rect.height / renderedH
+            
+            // Render High Resolution Image
+            // Target 300 DPI (approx 4.17x 72 DPI)
+            let renderScale: CGFloat = 4.17 
+            let highResW = pdfW * renderScale
+            let highResH = pdfH * renderScale
+            let highResSize = CGSize(width: highResW, height: highResH)
+            
+            let fullImage = page.thumbnail(of: highResSize, for: PDFDisplayBox.mediaBox)
+            
+            // Calculate Crop Rect in High Res Image
+            let cropX = normX * highResW
+            let cropY = normY * highResH
+            let cropW = normW * highResW
+            let cropH = normH * highResH
+            
+            let cropRect = CGRect(x: cropX, y: cropY, width: cropW, height: cropH)
+            
+            if let cgImage = fullImage.cgImage(forProposedRect: nil, context: nil, hints: nil),
+               let cropped = cgImage.cropping(to: cropRect) {
+                
+                let filename = "Page\(region.page + 1)_Region\(index + 1).png"
+                let fileURL = outputDir.appendingPathComponent(filename)
+                
+                if let destination = CGImageDestinationCreateWithURL(fileURL as CFURL, "public.png" as CFString, 1, nil) {
+                    CGImageDestinationAddImage(destination, cropped, nil)
+                    CGImageDestinationFinalize(destination)
+                }
+            }
+        }
+        
+        // Notify
+        await MainActor.run {
+            let alert = NSAlert()
+            alert.messageText = "Extraction Complete"
+            alert.informativeText = "Saved \(regions.count) images to \(outputDir.lastPathComponent)"
+            alert.runModal()
+        }
     }
 }

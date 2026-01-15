@@ -1,0 +1,50 @@
+Building for production...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+[2/4] Compiling GhostPDF_ CitationFormatter.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:333:24: [1;31merror: [1;39minitializer for conditional binding must have Optional type, not 'NSRect' (aka 'CGRect')[0;0m
+ [0;36m331 |[0;0m                     // Filter for selections on THIS page
+ [0;36m332 |[0;0m                     if let selectionOnPage = selections.first(where: { $0.pages.contains(page) }),
+ [0;36m333 |[0;0m                        let bounds = [4;39mselectionOnPage.bounds(for: page)[0;0m { // Note: bounds returns optional rect? No, usually valid if on page.
+     [0;36m|[0;0m                        `- [1;31merror: [1;39minitializer for conditional binding must have Optional type, not 'NSRect' (aka 'CGRect')[0;0m
+ [0;36m334 |[0;0m                         
+ [0;36m335 |[0;0m                         // GUIDED CROP STRATEGY:
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:340:29: [1;33mwarning: [1;39minitialization of immutable value 'captionY' was never used; consider replacing with assignment to '_' or removing it[0;0m [#no-usage]
+ [0;36m338 |[0;0m                         // To be safe/simple: Take a square area above the caption.
+ [0;36m339 |[0;0m                         
+ [0;36m340 |[0;0m                         let captionY = bounds.origin.y + bounds.height // PDF kit origin is bottom-left usually? 
+     [0;36m|[0;0m                             `- [1;33mwarning: [1;39minitialization of immutable value 'captionY' was never used; consider replacing with assignment to '_' or removing it[0;0m [#no-usage]
+ [0;36m341 |[0;0m                         // Wait, PDFKit coordinates: (0,0) is bottom-left.
+ [0;36m342 |[0;0m                         // So text at Y=100 is higher than Y=50.
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:915:9: [1;33mwarning: [1;39mvariable 'doi' was never mutated; consider changing to 'let' constant[0;0m
+ [0;36m913 |[0;0m 
+ [0;36m914 |[0;0m     // First, try to extract DOI using unified logic
+ [0;36m915 |[0;0m     var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+     [0;36m|[0;0m         `- [1;33mwarning: [1;39mvariable 'doi' was never mutated; consider changing to 'let' constant[0;0m
+ [0;36m916 |[0;0m     var arxivID = ""
+ [0;36m917 |[0;0m     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1075:9: [1;33mwarning: [1;39mvariable 'number' was never mutated; consider changing to 'let' constant[0;0m
+[0;36m1073 |[0;0m     var journal = "Unknown Journal"
+[0;36m1074 |[0;0m     var volume = ""
+[0;36m1075 |[0;0m     var number = ""
+     [0;36m|[0;0m         `- [1;33mwarning: [1;39mvariable 'number' was never mutated; consider changing to 'let' constant[0;0m
+[0;36m1076 |[0;0m     var pages = ""
+[0;36m1077 |[0;0m     var doi = extractedDOI // Use the DOI already extracted
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1077:9: [1;33mwarning: [1;39mvariable 'doi' was never mutated; consider changing to 'let' constant[0;0m
+[0;36m1075 |[0;0m     var number = ""
+[0;36m1076 |[0;0m     var pages = ""
+[0;36m1077 |[0;0m     var doi = extractedDOI // Use the DOI already extracted
+     [0;36m|[0;0m         `- [1;33mwarning: [1;39mvariable 'doi' was never mutated; consider changing to 'let' constant[0;0m
+[0;36m1078 |[0;0m     
+[0;36m1079 |[0;0m     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2617:9: [1;33mwarning: [1;39mvariable 'docDOI' was never mutated; consider changing to 'let' constant[0;0m
+[0;36m2615 |[0;0m     
+[0;36m2616 |[0;0m     // 0. Try to find DOI using sophisticated logic
+[0;36m2617 |[0;0m     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+     [0;36m|[0;0m         `- [1;33mwarning: [1;39mvariable 'docDOI' was never mutated; consider changing to 'let' constant[0;0m
+[0;36m2618 |[0;0m     var docArXivID: String? = nil
+[0;36m2619 |[0;0m     

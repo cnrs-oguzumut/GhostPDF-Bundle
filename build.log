@@ -1,0 +1,56 @@
+Building for debugging...
+[0/6] Write sources
+[1/6] Write GhostPDF+-entitlement.plist
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/15] Compiling GhostPDF_ TitleExtractionHelper.swift
+[5/15] Compiling GhostPDF_ ThumbnailsView.swift
+[6/15] Compiling GhostPDF_ PDFCompressor.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:514:21: warning: variable 'mergedWithCurrent' was written to, but never read
+ 512 | 
+ 513 |                 var current = merged[i]
+ 514 |                 var mergedWithCurrent = false
+     |                     `- warning: variable 'mergedWithCurrent' was written to, but never read
+ 515 | 
+ 516 |                 for j in (i+1)..<merged.count {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1114:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1112 | 
+1113 |     // First, try to extract DOI using unified logic
+1114 |     var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1115 |     var arxivID = ""
+1116 |     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1274:9: warning: variable 'number' was never mutated; consider changing to 'let' constant
+1272 |     var journal = "Unknown Journal"
+1273 |     var volume = ""
+1274 |     var number = ""
+     |         `- warning: variable 'number' was never mutated; consider changing to 'let' constant
+1275 |     var pages = ""
+1276 |     var doi = extractedDOI // Use the DOI already extracted
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1276:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1274 |     var number = ""
+1275 |     var pages = ""
+1276 |     var doi = extractedDOI // Use the DOI already extracted
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1277 |     
+1278 |     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2816:9: warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2814 |     
+2815 |     // 0. Try to find DOI using sophisticated logic
+2816 |     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+     |         `- warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2817 |     var docArXivID: String? = nil
+2818 |     
+[7/15] Compiling GhostPDF_ NanoPDFApp.swift
+[8/15] Compiling GhostPDF_ ComparisonView.swift
+[9/15] Compiling GhostPDF_ CompressionPresets.swift
+[10/15] Compiling GhostPDF_ CitationFormatter.swift
+[11/15] Emitting module GhostPDF_
+[12/15] Compiling GhostPDF_ ContentView.swift
+[12/15] Write Objects.LinkFileList
+[13/15] Linking GhostPDF+
+[14/15] Applying GhostPDF+
+Build complete! (16.92s)
