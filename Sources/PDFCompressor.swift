@@ -692,20 +692,49 @@ func extractTextWithGS(url: URL, pageIndex: Int? = nil) async -> String? {
     let task = Process()
     task.executableURL = URL(fileURLWithPath: gsPath)
     task.arguments = arguments
-    
+
+    // Capture stderr for debugging
+    let errorPipe = Pipe()
+    task.standardError = errorPipe
+
     do {
         try task.run()
         task.waitUntilExit()
-        
-        if task.terminationStatus == 0 {
-            let extractedText = try String(contentsOf: tempOutputPath, encoding: .utf8)
-            try? fileManager.removeItem(at: tempOutputPath)
-            return extractedText
+
+        if task.terminationStatus == 0 && fileManager.fileExists(atPath: tempOutputPath.path) {
+            // Check if file is empty
+            let attributes = try? fileManager.attributesOfItem(atPath: tempOutputPath.path)
+            let fileSize = attributes?[.size] as? Int ?? 0
+
+            if fileSize == 0 {
+                try? fileManager.removeItem(at: tempOutputPath)
+                return nil
+            }
+
+            // Read file and try multiple encodings
+            if let data = try? Data(contentsOf: tempOutputPath) {
+                // Try multiple encodings - Ghostscript often outputs ISO-8859-1
+                let encodings: [String.Encoding] = [
+                    .utf8,
+                    .isoLatin1,        // ISO-8859-1 (most common for GS)
+                    .windowsCP1252,
+                    .ascii,
+                    .macOSRoman,
+                    .utf16
+                ]
+
+                for encoding in encodings {
+                    if let extractedText = String(data: data, encoding: encoding) {
+                        try? fileManager.removeItem(at: tempOutputPath)
+                        return extractedText
+                    }
+                }
+            }
         }
     } catch {
         print("Ghostscript text extraction failed: \(error)")
     }
-    
+
     try? fileManager.removeItem(at: tempOutputPath)
     return nil
 }
