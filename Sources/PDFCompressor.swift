@@ -63,6 +63,31 @@ struct GrammarCheckResult {
     let corrections: [GrammarCorrection]
 }
 
+// MARK: - Multi-Document Intelligence Models
+
+@available(macOS 26.0, *)
+@Generable
+struct DocumentContribution {
+    @Guide(description: "The filename of the PDF (e.g., 'paper_a.pdf')")
+    let fileName: String
+
+    @Guide(description: "What this specific document says about the question, or 'Not applicable' if it doesn't address the question")
+    let insight: String
+}
+
+@available(macOS 26.0, *)
+@Generable
+struct MultiDocAnswer {
+    @Guide(description: "The main answer synthesizing information from all documents. Be comprehensive and cite which papers support each point.")
+    let answer: String
+
+    @Guide(description: "List of document filenames that contributed to this answer")
+    let sources: [String]
+
+    @Guide(description: "Per-document insights showing what each paper specifically says")
+    let documentContributions: [DocumentContribution]
+}
+
 /// Extract metadata from PDF text using Apple Foundation Models (macOS 26+)
 @available(macOS 26.0, *)
 func extractMetadataWithAI(from text: String) async -> AIExtractedMetadata? {

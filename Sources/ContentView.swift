@@ -3815,8 +3815,17 @@ struct AITabView: View {
         case chat = "AI Chat"
         case finder = "Finder"
         case grammar = "Grammar"
-        
+
         var id: String { self.rawValue }
+    }
+
+    // Multi-document chunk structure
+    struct DocumentChunk {
+        let pdfURL: URL
+        let fileName: String
+        let text: String
+        let pageRange: String
+        let charCount: Int
     }
 
     private var isTahoeAvailable: Bool {
@@ -4093,6 +4102,27 @@ struct AITabView: View {
         // Smart Q&A Chat Interface
         GroupBox {
             VStack(spacing: 0) {
+                // Multi-doc mode indicator
+                let checkedCount = selectedFiles.filter { $0.isChecked }.count
+                if checkedCount > 1 {
+                    HStack {
+                        Image(systemName: "doc.on.doc.fill")
+                            .foregroundColor(.orange)
+                        Text("Multi-Document Mode: Analyzing \(checkedCount) papers")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Text("Context-aware synthesis")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(6)
+                    .padding(.bottom, 8)
+                }
+
                 if !chatHistory.isEmpty {
                     HStack {
                         Spacer()
@@ -5124,6 +5154,58 @@ struct AITabView: View {
         }
     }
 
+    // MARK: - Multi-Document Extraction
+    func extractMultiDocumentText() async -> [DocumentChunk] {
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
+        guard checkedFiles.count > 1 else { return [] }
+
+        // Calculate character budget per document
+        let totalBudget = 2500 // Leave room for prompt and output
+        let budgetPerDoc = min(totalBudget / checkedFiles.count, 1200)
+
+        var chunks: [DocumentChunk] = []
+
+        for file in checkedFiles {
+            guard let doc = PDFDocument(url: file.url) else { continue }
+
+            var extractedText = ""
+            var pagesExtracted: [Int] = []
+
+            // Strategy: Extract first 2 pages + last page (abstract, intro, conclusion)
+            let pagesToExtract = [0, 1, max(0, doc.pageCount - 1)]
+
+            for pageIndex in pagesToExtract where pageIndex < doc.pageCount {
+                if let pageText = await extractTextWithGS(url: file.url, pageIndex: pageIndex) {
+                    extractedText += pageText + "\n\n"
+                    pagesExtracted.append(pageIndex + 1) // 1-indexed for display
+
+                    // Stop if we've exceeded budget
+                    if extractedText.count >= budgetPerDoc {
+                        break
+                    }
+                }
+            }
+
+            // Trim to budget
+            if extractedText.count > budgetPerDoc {
+                extractedText = String(extractedText.prefix(budgetPerDoc)) + "..."
+            }
+
+            if !extractedText.isEmpty {
+                let pageRangeStr = pagesExtracted.sorted().map { String($0) }.joined(separator: ", ")
+                chunks.append(DocumentChunk(
+                    pdfURL: file.url,
+                    fileName: file.url.lastPathComponent,
+                    text: extractedText,
+                    pageRange: "pages \(pageRangeStr)",
+                    charCount: extractedText.count
+                ))
+            }
+        }
+
+        return chunks
+    }
+
     // MARK: - Q&A Function
     func performQnA() async {
         guard !qnaInput.isEmpty, !selectedFiles.isEmpty else { return }
@@ -5133,45 +5215,97 @@ struct AITabView: View {
         chatHistory.append((role: "User", content: question))
         isThinking = true
 
-        // Extract text from PDF
-        guard let pdfURL = selectedFiles.first?.url,
-              let doc = PDFDocument(url: pdfURL) else {
-            chatHistory.append((role: "System", content: "Error: Could not load PDF"))
-            isThinking = false
-            return
-        }
+        let checkedFiles = selectedFiles.filter { $0.isChecked }
 
-        var fullText = ""
-        // Limit to first 5 pages and 6000 chars to stay within context window
-        for i in 0..<min(5, doc.pageCount) {
-            if let page = doc.page(at: i), let pageText = page.string {
-                fullText += pageText + "\n\n"
-                if fullText.count > 6000 { break }
-            }
-        }
+        // Multi-document mode
+        if checkedFiles.count > 1 {
+            if #available(macOS 26.0, *) {
+                // Extract text from all checked PDFs
+                let chunks = await extractMultiDocumentText()
 
-        // Use FoundationModels for Q&A
-        if #available(macOS 26.0, *) {
-            do {
-                let session = LanguageModelSession()
-                // Keep prompt minimal to avoid context overflow
-                let limitedText = String(fullText.prefix(6000))
-                let prompt = """
-                Answer this question based on the PDF text below. Be concise.
+                guard !chunks.isEmpty else {
+                    chatHistory.append((role: "System", content: "Error: Could not extract text from any PDF"))
+                    isThinking = false
+                    return
+                }
 
-                Text: \(limitedText)
+                do {
+                    let session = LanguageModelSession()
 
-                Q: \(question)
-                A:
-                """
+                    // Build multi-document prompt
+                    var prompt = "Answer this question by synthesizing information from multiple academic papers below.\n\n"
 
-                let response = try await session.respond(to: prompt)
-                chatHistory.append((role: "Assistant", content: response.content))
-            } catch {
-                chatHistory.append((role: "System", content: "Error: \(error.localizedDescription)"))
+                    for (index, chunk) in chunks.enumerated() {
+                        prompt += "Document \(index + 1) (\(chunk.fileName), \(chunk.pageRange)):\n"
+                        prompt += chunk.text + "\n\n"
+                    }
+
+                    prompt += "Question: \(question)\n\n"
+                    prompt += "Provide a comprehensive answer and cite which documents support each point."
+
+                    let response = try await session.respond(to: prompt, generating: MultiDocAnswer.self)
+
+                    // Format answer with sources
+                    var formattedAnswer = response.content.answer + "\n\n"
+                    formattedAnswer += "📚 Sources: " + response.content.sources.joined(separator: ", ")
+
+                    if !response.content.documentContributions.isEmpty {
+                        formattedAnswer += "\n\n📄 Per-Document Insights:\n"
+                        for contrib in response.content.documentContributions {
+                            if contrib.insight.lowercased() != "not applicable" {
+                                formattedAnswer += "• \(contrib.fileName): \(contrib.insight)\n"
+                            }
+                        }
+                    }
+
+                    chatHistory.append((role: "Assistant", content: formattedAnswer))
+                } catch {
+                    chatHistory.append((role: "System", content: "Error: \(error.localizedDescription)"))
+                }
+            } else {
+                chatHistory.append((role: "System", content: "Multi-document Q&A requires macOS 26+"))
             }
         } else {
-            chatHistory.append((role: "System", content: "Q&A requires macOS 26+"))
+            // Single document mode (existing behavior)
+            guard let pdfURL = selectedFiles.first?.url,
+                  let doc = PDFDocument(url: pdfURL) else {
+                chatHistory.append((role: "System", content: "Error: Could not load PDF"))
+                isThinking = false
+                return
+            }
+
+            var fullText = ""
+            // Limit to first 5 pages and 6000 chars to stay within context window
+            for i in 0..<min(5, doc.pageCount) {
+                if let page = doc.page(at: i), let pageText = page.string {
+                    fullText += pageText + "\n\n"
+                    if fullText.count > 6000 { break }
+                }
+            }
+
+            // Use FoundationModels for Q&A
+            if #available(macOS 26.0, *) {
+                do {
+                    let session = LanguageModelSession()
+                    // Keep prompt minimal to avoid context overflow
+                    let limitedText = String(fullText.prefix(6000))
+                    let prompt = """
+                    Answer this question based on the PDF text below. Be concise.
+
+                    Text: \(limitedText)
+
+                    Q: \(question)
+                    A:
+                    """
+
+                    let response = try await session.respond(to: prompt)
+                    chatHistory.append((role: "Assistant", content: response.content))
+                } catch {
+                    chatHistory.append((role: "System", content: "Error: \(error.localizedDescription)"))
+                }
+            } else {
+                chatHistory.append((role: "System", content: "Q&A requires macOS 26+"))
+            }
         }
 
         isThinking = false
