@@ -3807,6 +3807,8 @@ struct AITabView: View {
     @State private var grammarCorrectionsCount: Int = 0
     @State private var isWarmingUp: Bool = false
     @State private var warmedUpSession: Any? = nil // Store warmed session
+    @State private var grammarPageSelection: String = "" // Page selection input (e.g., "1-5" or "1,3,5")
+    @State private var grammarCheckAllPages: Bool = true // Toggle for all pages vs custom
 
     enum AIAction: String, CaseIterable, Identifiable {
         case summary = "Summarize"
@@ -4435,6 +4437,33 @@ struct AITabView: View {
                 }
                 .pickerStyle(.segmented)
 
+                // Page Selection
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Pages to check:")
+                            .foregroundColor(.secondary)
+                            .font(.subheadline)
+                        Spacer()
+                    }
+
+                    Picker("Page Selection", selection: $grammarCheckAllPages) {
+                        Text("All pages").tag(true)
+                        Text("Custom range").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+
+                    if !grammarCheckAllPages {
+                        TextField("e.g., 1-5 or 1,3,5,10-15", text: $grammarPageSelection)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isGrammarChecking)
+
+                        Text("Formats: Single (5), Range (1-5), Mixed (1,3,5-10)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+
                 // Temperature Slider
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -4548,6 +4577,39 @@ struct AITabView: View {
         }
     }
 
+    // Parse page selection string (e.g., "1-5" or "1,3,5,10-15")
+    private func parsePageSelection(_ input: String, maxPages: Int) -> [Int] {
+        guard !input.isEmpty else { return [] }
+
+        var pages = Set<Int>()
+        let components = input.components(separatedBy: ",")
+
+        for component in components {
+            let trimmed = component.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.contains("-") {
+                // Range (e.g., "1-5")
+                let rangeParts = trimmed.components(separatedBy: "-")
+                if rangeParts.count == 2,
+                   let start = Int(rangeParts[0].trimmingCharacters(in: .whitespaces)),
+                   let end = Int(rangeParts[1].trimmingCharacters(in: .whitespaces)) {
+                    for page in start...end {
+                        if page >= 1 && page <= maxPages {
+                            pages.insert(page - 1) // Convert to 0-indexed
+                        }
+                    }
+                }
+            } else {
+                // Single page (e.g., "3")
+                if let page = Int(trimmed), page >= 1 && page <= maxPages {
+                    pages.insert(page - 1) // Convert to 0-indexed
+                }
+            }
+        }
+
+        return Array(pages).sorted()
+    }
+
     private func performGrammarCheck() {
         let checkedFiles = selectedFiles.filter { $0.isChecked }
         guard let file = checkedFiles.first else { return }
@@ -4569,8 +4631,24 @@ struct AITabView: View {
 
             let pageCount = pdfDoc.pageCount
 
+            // Determine which pages to check
+            let pagesToCheck: [Int]
+            if grammarCheckAllPages {
+                pagesToCheck = Array(0..<pageCount)
+            } else {
+                let parsed = parsePageSelection(grammarPageSelection, maxPages: pageCount)
+                if parsed.isEmpty {
+                    await MainActor.run {
+                        grammarText = "Error: Invalid page selection. Use format like '1-5' or '1,3,5,10-15'"
+                        isGrammarChecking = false
+                    }
+                    return
+                }
+                pagesToCheck = parsed
+            }
+
             await MainActor.run {
-                grammarTotalPages = pageCount
+                grammarTotalPages = pagesToCheck.count
                 grammarCurrentPage = 0
             }
 
@@ -4579,13 +4657,13 @@ struct AITabView: View {
             if #available(macOS 26.0, *) {
                 // Create a fresh session for each grammar check
                 let session = LanguageModelSession()
-                
-                for pageIndex in 0..<pageCount {
+
+                for (index, pageIndex) in pagesToCheck.enumerated() {
                     if Task.isCancelled { break }
 
                     await MainActor.run {
-                        grammarCurrentPage = pageIndex + 1
-                        grammarProgress = "Analyzing page \(pageIndex + 1) of \(pageCount)..."
+                        grammarCurrentPage = index + 1
+                        grammarProgress = "Analyzing page \(pageIndex + 1) of \(pageCount)... (\(index + 1)/\(pagesToCheck.count))"
                     }
 
                     // Use Ghostscript for high-quality text extraction
