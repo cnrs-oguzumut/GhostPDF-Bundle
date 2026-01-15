@@ -3770,8 +3770,12 @@ struct AITabView: View {
     @State private var relatedWorkOutput: String = ""
     @State private var isSearchingRelatedWork: Bool = false
 
-    enum AIAction {
-        case summary
+    enum AIAction: String, CaseIterable, Identifiable {
+        case summary = "Summarize"
+        case chat = "AI Chat"
+        case finder = "Finder"
+        
+        var id: String { self.rawValue }
     }
 
     private var isTahoeAvailable: Bool {
@@ -3839,12 +3843,67 @@ struct AITabView: View {
                     tahoeWarningView
                     Spacer()
                 } else {
-                    // Action Cards
+                    // Action Grid (Unified with Bibliography mode)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 16) {
+                        
+                        // 1. Summarization
+                        SquareActionCard(
+                            title: "Summarize",
+                            icon: "wand.and.stars",
+                            color: .purple,
+                            isActive: activeAction == .summary,
+                            isProcessing: isSummarizing && activeAction == .summary,
+                            isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
+                        ) {
+                            if isSummarizing && activeAction == .summary {
+                                self.currentSummaryTask?.cancel()
+                                self.isSummarizing = false
+                                self.activeAction = nil
+                            } else {
+                                activeAction = .summary
+                            }
+                        }
+                        
+                        // 2. Chat
+                        SquareActionCard(
+                            title: "AI Chat",
+                            icon: "bubble.left.and.bubble.right.fill",
+                            color: .blue,
+                            isActive: activeAction == .chat,
+                            isProcessing: isThinking && activeAction == .chat,
+                            isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
+                        ) {
+                            activeAction = .chat
+                        }
+                        
+                        // 3. Related Work Finder
+                        SquareActionCard(
+                            title: "Finder",
+                            icon: "link.circle.fill",
+                            color: .orange,
+                            isActive: activeAction == .finder,
+                            isProcessing: isSearchingRelatedWork && activeAction == .finder,
+                            isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
+                        ) {
+                            activeAction = .finder
+                        }
+                    }
+                    .padding(.horizontal)
+
+                    // Detailed Detailed Views (Conditional)
                     VStack(spacing: 16) {
-                        summaryCardView
-                        chatInterfaceView
-                        relatedWorkView
-                        outputAreaView
+                        if activeAction == .summary {
+                            summaryCardView
+                            outputAreaView
+                        }
+                        
+                        if activeAction == .chat {
+                            chatInterfaceView
+                        }
+                        
+                        if activeAction == .finder {
+                            relatedWorkView
+                        }
                     }
                     .padding(.horizontal)
                 }
@@ -3858,30 +3917,6 @@ struct AITabView: View {
         // Summary Card
         GroupBox {
             VStack(spacing: 12) {
-                HStack {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 20))
-                        .foregroundColor(.purple)
-                    Text("AI-Powered Summarization")
-                        .font(.headline)
-                    Spacer()
-
-                    // Info button
-                    Button(action: { showWritingToolsHelp.toggle() }) {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Learn about AI summarization")
-                }
-
-                Text("Extract key insights from academic papers using intelligent text analysis")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Divider()
-
                 HStack {
                     Text("Summary Type:")
                         .foregroundColor(.secondary)
@@ -3962,13 +3997,9 @@ struct AITabView: View {
         // Smart Q&A Chat Interface
         GroupBox {
             VStack(spacing: 0) {
-                HStack {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .foregroundColor(.blue)
-                    Text("Chat with PDF")
-                        .font(.headline)
-                    Spacer()
-                    if !chatHistory.isEmpty {
+                if !chatHistory.isEmpty {
+                    HStack {
+                        Spacer()
                         Button("Save Chat") {
                             saveConversation()
                         }
@@ -3983,8 +4014,8 @@ struct AITabView: View {
                         .buttonStyle(.plain)
                         .foregroundColor(.secondary)
                     }
+                    .padding(.bottom, 8)
                 }
-                .padding(.bottom, 8)
 
                 // Chat Area
                 ScrollViewReader { scrollProxy in
@@ -4095,13 +4126,9 @@ struct AITabView: View {
         // Related Work Finder
         GroupBox {
             VStack(spacing: 12) {
-                HStack {
-                    Image(systemName: "link.circle.fill")
-                        .foregroundColor(.orange)
-                    Text("Related Work Finder")
-                        .font(.headline)
-                    Spacer()
-                    if !relatedWorkOutput.isEmpty {
+                if !relatedWorkOutput.isEmpty {
+                    HStack {
+                        Spacer()
                         Button("Clear") {
                             relatedWorkOutput = ""
                             relatedWorkTopic = ""
@@ -4110,13 +4137,8 @@ struct AITabView: View {
                         .buttonStyle(.plain)
                         .foregroundColor(.secondary)
                     }
+                    .padding(.bottom, 8)
                 }
-                .padding(.bottom, 8)
-
-                Text("Find papers cited in your PDF that discuss a specific topic")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack {
                     TextField("Topic (e.g., 'deep learning', 'climate change')", text: $relatedWorkTopic)
@@ -4813,11 +4835,10 @@ struct ResearcherTabView: View {
                         isProcessing: isProcessing && activeAction == .bibtex,
                         isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
                     ) {
-                        if isProcessing && activeAction == .bibtex {
+                         if isProcessing && activeAction == .bibtex {
                             // Stop action
                              isCancelled = true
                              extractionTask?.cancel()
-                        } else {
                         } else {
                             activeAction = .bibtex
                             generateBibEntry()
