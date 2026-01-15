@@ -63,6 +63,39 @@ struct ContentView: View {
     @State private var selectedFiles: [PDFFile] = []
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
     @State private var selectedTab = 0
+    @State private var selectedMainMode: MainMode? = nil
+
+    enum MainMode: String, CaseIterable, Identifiable {
+        case compress = "Compress PDF"
+        case tools = "PDF Tools"
+        case researcher = "AI Researcher"
+
+        var id: String { rawValue }
+
+        var icon: String {
+            switch self {
+            case .compress: return "arrow.down.circle.fill"
+            case .tools: return "wrench.and.screwdriver.fill"
+            case .researcher: return "sparkles.rectangle.stack.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .compress: return .blue
+            case .tools: return .orange
+            case .researcher: return .purple
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .compress: return "Reduce file size with customizable quality settings"
+            case .tools: return "Extract images, split, merge, rotate, and more"
+            case .researcher: return "AI-powered Q&A, summaries, and bibliography tools"
+            }
+        }
+    }
     @State private var selectedPreset: CompressionPreset = .medium
     @State private var proSettings = ProSettings()
     @State private var selectedProPreset: ProPreset = .email
@@ -130,7 +163,6 @@ struct ContentView: View {
     @State private var reorderPageOrder: [Int] = []
     
     // AI Summary State
-    // AI Summary State
     @State private var summaryType: SummaryType = .keyPoints
     @State private var summaryText: String = ""
     @State private var isSummarizing: Bool = false
@@ -180,11 +212,56 @@ struct ContentView: View {
             lhs.id == rhs.id && lhs.isChecked == rhs.isChecked
         }
     }
-    
+
+    // MARK: - Mode Selection View
+
+    @ViewBuilder
+    private var modeSelectionView: some View {
+        VStack(spacing: 48) {
+            VStack(spacing: 12) {
+                Text("Choose Your Workflow")
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundColor(isDarkMode ? .white : Color(red: 15/255, green: 23/255, blue: 42/255))
+
+                Text("Select a mode to get started")
+                    .font(.system(size: 16))
+                    .foregroundColor(isDarkMode ? .white.opacity(0.6) : Color(red: 15/255, green: 23/255, blue: 42/255).opacity(0.6))
+            }
+            .padding(.top, 40)
+
+            HStack(spacing: 24) {
+                ForEach(MainMode.allCases) { mode in
+                    ModeCard(
+                        mode: mode,
+                        isEmphasized: mode == .researcher,
+                        isDarkMode: isDarkMode
+                    ) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedMainMode = mode
+                            // Set appropriate initial tab based on mode
+                            switch mode {
+                            case .compress:
+                                selectedTab = 0 // Basic tab
+                            case .tools:
+                                selectedTab = 2 // Tools tab
+                            case .researcher:
+                                selectedTab = 5 // AI tab
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 48)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: isDarkMode ? 
+                colors: isDarkMode ?
                     [Color(red: 15/255, green: 23/255, blue: 42/255), Color(red: 30/255, green: 41/255, blue: 59/255)] :
                     [Color(red: 248/255, green: 250/255, blue: 252/255), Color(red: 226/255, green: 232/255, blue: 240/255)],
                 startPoint: .topLeading,
@@ -192,10 +269,33 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
             .preferredColorScheme(isDarkMode ? .dark : .light)
-            
+
             VStack(spacing: 16) {
                 HStack {
+                    // Back button when in a mode
+                    if selectedMainMode != nil {
+                        Button(action: {
+                            selectedMainMode = nil
+                            statusMessage = ""
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left")
+                                Text("Home")
+                            }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(isDarkMode ? .white.opacity(0.8) : Color(red: 15/255, green: 23/255, blue: 42/255))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(isDarkMode ? Color.white.opacity(0.1) : Color.white)
+                            .cornerRadius(8)
+                            .shadow(radius: isDarkMode ? 0 : 2)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.leading, 24)
+                    }
+
                     Spacer()
+
                     Button(action: { isDarkMode.toggle() }) {
                         Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
                             .font(.system(size: 16, weight: .semibold))
@@ -209,33 +309,42 @@ struct ContentView: View {
                     .padding(.trailing, 24)
                     .padding(.top, 16)
                 }
-                .frame(height: 0) // Pull up into ZStack alignment if needed, or just let it stack
+                .frame(height: 0)
                 .zIndex(10)
 
                 Text("GhostPDF+")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(isDarkMode ? .white : Color(red: 15/255, green: 23/255, blue: 42/255))
                     .padding(.top, 4)
-                
+
                 if !appState.ghostscriptAvailable {
                     WarningBanner()
                 }
-                
-                fileListArea
 
-                Picker("Mode", selection: $selectedTab) {
-                    Text("Basic").tag(0)
-                    Text("Pro").tag(1)
-                    Text("Tools").tag(2)
-                    Text("Security").tag(3)
-                    Text("Advanced").tag(4)
-                    Text("AI").tag(5)
-                    Text("Researcher").tag(6)
-                    // BibTeX tab (7) disabled due to performance issues
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 24)
-                .onChange(of: selectedTab) { newValue in
+                if selectedMainMode == nil {
+                    modeSelectionView
+                } else {
+                    fileListArea
+
+                    // Show only relevant tabs based on selected mode
+                    if let mode = selectedMainMode {
+                        Picker("Mode", selection: $selectedTab) {
+                            switch mode {
+                            case .compress:
+                                Text("Basic").tag(0)
+                                Text("Pro").tag(1)
+                            case .tools:
+                                Text("Extract Images").tag(2)
+                                Text("Security").tag(3)
+                                Text("Advanced").tag(4)
+                            case .researcher:
+                                Text("AI").tag(5)
+                                Text("Bibliography").tag(6)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 24)
+                        .onChange(of: selectedTab) { newValue in
                     // Handle Researcher tab transitions (tab 6)
                     if previousTab == 6 && newValue != 6 {
                         // Leaving Researcher tab: save and clear BibTeX output
@@ -271,60 +380,67 @@ struct ContentView: View {
                         }
                     }
 
-                    previousTab = newValue
-                    
-                    if (newValue == 1 || newValue == 2 || newValue == 3 || newValue == 4 || newValue == 5) && !appState.ghostscriptAvailable {
-                        selectedTab = 0
-                        showingProModeRequirementAlert = true
+                            previousTab = newValue
+
+                            if (newValue == 1 || newValue == 2 || newValue == 3 || newValue == 4 || newValue == 5) && !appState.ghostscriptAvailable {
+                                selectedTab = 0
+                                showingProModeRequirementAlert = true
+                            }
+                        }
                     }
-                }
-                
-                // Use ZStack with opacity to keep Researcher tab alive (preserves dropped bib content)
-                ZStack {
-                    BasicTabView(selectedPreset: $selectedPreset)
-                        .opacity(selectedTab == 0 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 0)
-                    
-                    proTabContent
-                        .opacity(selectedTab == 1 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 1)
-                    
-                    toolsTabContent
-                        .opacity(selectedTab == 2 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 2)
-                    
-                    securityTabContent
-                        .opacity(selectedTab == 3 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 3)
-                    
-                    advancedTabContent
-                        .opacity(selectedTab == 4 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 4)
-                    
-                    aiTabContent
-                        .opacity(selectedTab == 5 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 5)
-                    
-                    ResearcherTabView(
-                        selectedFiles: $selectedFiles,
-                        outputText: $researcherOutputText,
-                        isProcessing: $isResearcherProcessing
-                    )
-                    .opacity(selectedTab == 6 ? 1 : 0)
-                    .allowsHitTesting(selectedTab == 6)
 
+                    // Use ZStack with opacity to keep Researcher tab alive (preserves dropped bib content)
+                    ZStack {
+                        // Compress mode tabs
+                        if selectedMainMode == .compress {
+                            BasicTabView(selectedPreset: $selectedPreset)
+                                .opacity(selectedTab == 0 ? 1 : 0)
+                                .allowsHitTesting(selectedTab == 0)
 
-                    // BibTeX tab disabled - causes freezing
-                    /*
-                    BibTeXFormatterView(
-                        selectedFiles: $selectedFiles,
-                        outputText: $bibFormatterOutputText,
-                        isProcessing: $isBibFormatterProcessing
-                    )
-                    .opacity(selectedTab == 7 ? 1 : 0)
-                    .allowsHitTesting(selectedTab == 7)
-                    */
-                }
+                            proTabContent
+                                .opacity(selectedTab == 1 ? 1 : 0)
+                                .allowsHitTesting(selectedTab == 1)
+                        }
+
+                        // Tools mode tabs
+                        if selectedMainMode == .tools {
+                            toolsTabContent
+                                .opacity(selectedTab == 2 ? 1 : 0)
+                                .allowsHitTesting(selectedTab == 2)
+
+                            securityTabContent
+                                .opacity(selectedTab == 3 ? 1 : 0)
+                                .allowsHitTesting(selectedTab == 3)
+
+                            advancedTabContent
+                                .opacity(selectedTab == 4 ? 1 : 0)
+                                .allowsHitTesting(selectedTab == 4)
+                        }
+
+                        // Researcher mode tabs
+                        if selectedMainMode == .researcher {
+                            aiTabContent
+                                .opacity(selectedTab == 5 ? 1 : 0)
+                                .allowsHitTesting(selectedTab == 5)
+
+                            ResearcherTabView(
+                                selectedFiles: $selectedFiles,
+                                outputText: $researcherOutputText,
+                                isProcessing: $isResearcherProcessing
+                            )
+                            .opacity(selectedTab == 6 ? 1 : 0)
+                            .allowsHitTesting(selectedTab == 6)
+                        }
+
+                        // BibTeX tab enabled
+                        BibTeXFormatterView(
+                            selectedFiles: $selectedFiles,
+                            outputText: $bibFormatterOutputText,
+                            isProcessing: $isBibFormatterProcessing
+                        )
+                        .opacity(selectedTab == 7 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 7)
+                    }
                 
                 // Hide compression progress bar in Researcher (6) and BibTeX (7) tabs
                 if isCompressing && selectedTab != 6 && selectedTab != 7 {
@@ -347,29 +463,30 @@ struct ContentView: View {
                         .padding(.horizontal, 24)
                 }
 
-                // Hide the compress button on AI tab, Researcher tab, and BibTeX tab
-                if selectedTab != 5 && selectedTab != 6 && selectedTab != 7 {
-                    Button(action: performAction) {
-                        Text(actionButtonTitle)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(
-                                LinearGradient(
-                                    colors: !selectedFiles.isEmpty && !isCompressing
-                                        ? [Color(red: 34/255, green: 197/255, blue: 94/255), Color(red: 22/255, green: 163/255, blue: 74/255)]
-                                        : [Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3), Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                    // Hide the compress button on AI tab, Researcher tab, and BibTeX tab
+                    if selectedTab != 5 && selectedTab != 6 && selectedTab != 7 {
+                        Button(action: performAction) {
+                            Text(actionButtonTitle)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(
+                                    LinearGradient(
+                                        colors: !selectedFiles.isEmpty && !isCompressing
+                                            ? [Color(red: 34/255, green: 197/255, blue: 94/255), Color(red: 22/255, green: 163/255, blue: 74/255)]
+                                            : [Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3), Color(red: 148/255, green: 163/255, blue: 184/255).opacity(0.3)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
                                 )
-                            )
-                            .cornerRadius(14)
+                                .cornerRadius(14)
+                        }
+                        .disabled(selectedFiles.isEmpty || isCompressing)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
                     }
-                    .disabled(selectedFiles.isEmpty || isCompressing)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-                }
+                } // end of else block for selectedMainMode
             }
         }
         .sheet(isPresented: $showingComparison) {
@@ -3646,6 +3763,7 @@ struct AITabView: View {
     @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false
 
     @State private var activeAction: AIAction? = nil
+    @State private var currentSummaryTask: Task<Void, Never>? = nil // Handle for cancellation
     @State private var extractedText: String = ""
     @State private var showWritingToolsHelp: Bool = false
     @State private var relatedWorkTopic: String = ""
@@ -3654,6 +3772,52 @@ struct AITabView: View {
 
     enum AIAction {
         case summary
+    }
+
+    private var isTahoeAvailable: Bool {
+        if #available(macOS 26.0, *) {
+            return true
+        } else {
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private var tahoeWarningView: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(.orange)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("macOS Tahoe Required")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Text("AI-powered features require macOS 15.1 (Tahoe) or later with Apple Foundation Models.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            )
+
+            Text("This tab cannot be used on your current macOS version. Please upgrade to macOS Tahoe to access AI features.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .padding(.horizontal)
     }
 
     var body: some View {
@@ -3670,379 +3834,413 @@ struct AITabView: View {
                 }
                 .padding(.horizontal)
 
-                // Action Cards
-                VStack(spacing: 16) {
-                    // Summary Card
-                    GroupBox {
-                        VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "wand.and.stars")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.purple)
-                                Text("AI-Powered Summarization")
-                                    .font(.headline)
-                                Spacer()
-
-                                // Info button
-                                Button(action: { showWritingToolsHelp.toggle() }) {
-                                    Image(systemName: "info.circle")
-                                        .foregroundColor(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Learn about AI summarization")
-                            }
-
-                            Text("Extract key insights from academic papers using intelligent text analysis")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Divider()
-
-                            HStack {
-                                Text("Summary Type:")
-                                    .foregroundColor(.secondary)
-                                    .font(.subheadline)
-                                Spacer()
-                            }
-
-                            // Summary Type Grid
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                                ForEach(SummaryType.allCases) { type in
-                                    Button(action: {
-                                        summaryType = type
-                                    }) {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: type.icon)
-                                                .font(.system(size: 18))
-                                            Text(type.name)
-                                                .font(.caption)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(summaryType == type ? Color.purple.opacity(0.2) : Color.clear)
-                                        .cornerRadius(8)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(summaryType == type ? Color.purple : Color.secondary.opacity(0.3), lineWidth: 1.5)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .help(type.description)
-                                }
-                            }
-
-                            Button(action: {
-                                activeAction = .summary
-                                extractTextFromPDF()
-                            }) {
-                                HStack {
-                                    if isSummarizing && activeAction == .summary {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Image(systemName: "sparkles")
-                                    }
-                                    Text(isSummarizing && activeAction == .summary ? "Extracting text..." : "Generate AI Summary")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.purple)
-                            .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
-                        }
-                        .padding(12)
+                // Tahoe Required Warning
+                if !isTahoeAvailable {
+                    tahoeWarningView
+                    Spacer()
+                } else {
+                    // Action Cards
+                    VStack(spacing: 16) {
+                        summaryCardView
+                        chatInterfaceView
+                        relatedWorkView
+                        outputAreaView
                     }
-                    .alert("AI Summarization", isPresented: $showWritingToolsHelp) {
-                        Button("OK", role: .cancel) { }
-                    } message: {
-                        Text("This feature uses intelligent text analysis to extract the most important sentences from your PDF based on position and keyword scoring. It processes everything locally - no internet required, completely private.\n\nChoose from 4 summary formats:\n• TL;DR - Ultra-short (3-5 sentences)\n• Key Points - Main findings (7-10 bullets)\n• Abstract - Academic summary (10 sentences)\n• Full Summary - Comprehensive overview (20 sentences)")
-                    }
-                    
-                    // Advanced AI Tools Card
-                    // Smart Q&A Chat Interface
-                    GroupBox {
-                        VStack(spacing: 0) {
-                            HStack {
-                                Image(systemName: "bubble.left.and.bubble.right.fill")
-                                    .foregroundColor(.blue)
-                                Text("Chat with PDF")
-                                    .font(.headline)
-                                Spacer()
-                                if !chatHistory.isEmpty {
-                                    Button("Save Chat") {
-                                        saveConversation()
-                                    }
-                                    .font(.caption)
-                                    .buttonStyle(.plain)
-                                    .foregroundColor(.blue)
-
-                                    Button("Clear") {
-                                        chatHistory.removeAll()
-                                    }
-                                    .font(.caption)
-                                    .buttonStyle(.plain)
-                                    .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.bottom, 8)
-
-                            // Chat Area
-                            ScrollViewReader { scrollProxy in
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        if chatHistory.isEmpty {
-                                            Text("Ask questions about your PDF. The AI will analyze the text to provide answers.")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                                .frame(maxWidth: .infinity, alignment: .center)
-                                                .padding(.top, 40)
-                                        } else {
-                                            ForEach(0..<chatHistory.count, id: \.self) { i in
-                                                let msg = chatHistory[i]
-                                                HStack(alignment: .top, spacing: 8) {
-                                                    if msg.role == "System" {
-                                                        Image(systemName: "sparkles")
-                                                            .foregroundColor(.purple)
-                                                            .font(.system(size: 14))
-                                                            .padding(.top, 4)
-                                                    }
-
-                                                    VStack(alignment: .leading, spacing: 4) {
-                                                        Text(msg.content)
-                                                            .textSelection(.enabled)
-                                                            .padding(10)
-                                                            .background(msg.role == "User" ? Color.blue.opacity(0.1) : Color(NSColor.textBackgroundColor))
-                                                            .cornerRadius(12)
-                                                            .overlay(
-                                                                RoundedRectangle(cornerRadius: 12)
-                                                                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                                                            )
-
-                                                        Button(action: {
-                                                            NSPasteboard.general.clearContents()
-                                                            NSPasteboard.general.setString(msg.content, forType: .string)
-                                                        }) {
-                                                            Label("Copy", systemImage: "doc.on.doc")
-                                                                .font(.caption2)
-                                                                .foregroundColor(.secondary)
-                                                        }
-                                                        .buttonStyle(.plain)
-                                                        .padding(.leading, 10)
-                                                    }
-
-                                                    if msg.role == "User" {
-                                                        Image(systemName: "person.circle.fill")
-                                                            .foregroundColor(.blue)
-                                                            .font(.system(size: 14))
-                                                            .padding(.top, 4)
-                                                    }
-                                                }
-                                                .frame(maxWidth: .infinity, alignment: msg.role == "User" ? .trailing : .leading)
-                                                .id(i)
-                                            }
-                                        }
-                                    }
-                                    .padding()
-                                }
-                                .frame(height: 300)
-                                .background(Color(NSColor.controlBackgroundColor))
-                                .cornerRadius(8)
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
-                                .onChange(of: chatHistory.count) { _ in
-                                    if let last = chatHistory.indices.last {
-                                        withAnimation {
-                                            scrollProxy.scrollTo(last, anchor: .bottom)
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Input Area
-                            HStack {
-                                TextField("Ask a question...", text: $qnaInput)
-                                    .textFieldStyle(.roundedBorder)
-                                    .disabled(isThinking || selectedFiles.isEmpty)
-                                    .onSubmit {
-                                        Task {
-                                            await performQnA()
-                                        }
-                                    }
-                                
-                                Button(action: {
-                                    Task {
-                                        await performQnA()
-                                    }
-                                }) {
-                                    if isThinking {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Image(systemName: "arrow.up.circle.fill")
-                                            .font(.title2)
-                                            .foregroundColor(.blue)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(qnaInput.isEmpty || isThinking || selectedFiles.isEmpty)
-                            }
-                            .padding(.top, 8)
-                        }
-                        .padding(12)
-                    }
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
-
-                // Related Work Finder
-                GroupBox {
-                    VStack(spacing: 12) {
-                        HStack {
-                            Image(systemName: "link.circle.fill")
-                                .foregroundColor(.orange)
-                            Text("Related Work Finder")
-                                .font(.headline)
-                            Spacer()
-                            if !relatedWorkOutput.isEmpty {
-                                Button("Clear") {
-                                    relatedWorkOutput = ""
-                                    relatedWorkTopic = ""
-                                }
-                                .font(.caption)
-                                .buttonStyle(.plain)
-                                .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.bottom, 8)
-
-                        Text("Find papers cited in your PDF that discuss a specific topic")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        HStack {
-                            TextField("Topic (e.g., 'deep learning', 'climate change')", text: $relatedWorkTopic)
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(isSearchingRelatedWork || selectedFiles.isEmpty)
-
-                            Button(action: {
-                                Task {
-                                    await findRelatedWork()
-                                }
-                            }) {
-                                if isSearchingRelatedWork {
-                                    ProgressView().controlSize(.small)
-                                } else {
-                                    Label("Find", systemImage: "magnifyingglass")
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(relatedWorkTopic.isEmpty || isSearchingRelatedWork || selectedFiles.isEmpty)
-                        }
-
-                        if !relatedWorkOutput.isEmpty {
-                            ScrollView {
-                                Text(relatedWorkOutput)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding()
-                            }
-                            .frame(height: 200)
-                            .background(Color(NSColor.textBackgroundColor))
-                            .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
-                        }
-                    }
-                    .padding(12)
-                }
-                .padding(.horizontal)
-
-                // Output Area
-                GroupBox("AI Summary Output") {
-                    VStack(alignment: .trailing, spacing: 8) {
-                        HStack {
-                            if !summaryText.isEmpty {
-                                Button(action: {
-                                    summaryText = ""
-                                    extractedText = ""
-                                    activeAction = nil
-                                }) {
-                                    Label("Clear", systemImage: "trash")
-                                }
-                                .buttonStyle(.borderless)
-                                .foregroundColor(.red)
-                                .font(.caption)
-
-                                Button(action: {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(summaryText, forType: .string)
-                                }) {
-                                    Label("Copy", systemImage: "doc.on.doc")
-                                }
-                                .buttonStyle(.borderless)
-                                .font(.caption)
-                            }
-                            Spacer()
-                        }
-
-                        // Main output display
-                        ZStack {
-                            if summaryText.isEmpty {
-                                // Empty state
-                                VStack(spacing: 12) {
-                                    if isSummarizing {
-                                        // Processing state
-                                        VStack(spacing: 16) {
-                                            ProgressView()
-                                                .scaleEffect(1.5)
-                                                .progressViewStyle(.circular)
-
-                                            Text("AI is analyzing your document...")
-                                                .font(.headline)
-                                                .foregroundColor(.purple)
-
-                                            Text("This may take a few moments")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                    } else {
-                                        // Initial empty state
-                                        Image(systemName: "sparkles")
-                                            .font(.system(size: 40))
-                                            .foregroundColor(.purple.opacity(0.3))
-                                        Text("Click 'Generate AI Summary' to begin")
-                                            .foregroundColor(.secondary)
-                                            .multilineTextAlignment(.center)
-                                        Text("AI-powered summary will appear here")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary.opacity(0.7))
-                                            .multilineTextAlignment(.center)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 320)
-                            } else {
-                                // Summary result display
-                                ScrollView {
-                                    Text(summaryText)
-                                        .textSelection(.enabled)
-                                        .font(.system(.body))
-                                        .lineSpacing(6)
-                                        .padding()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .frame(minHeight: 320)
-                                .background(Color(NSColor.textBackgroundColor))
-                                .cornerRadius(6)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                )
-                            }
-                        }
-
-                    }
-                }
-                .padding(.horizontal)
             }
             .padding(.vertical)
+        }
+    }
+
+    @ViewBuilder
+    private var summaryCardView: some View {
+        // Summary Card
+        GroupBox {
+            VStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 20))
+                        .foregroundColor(.purple)
+                    Text("AI-Powered Summarization")
+                        .font(.headline)
+                    Spacer()
+
+                    // Info button
+                    Button(action: { showWritingToolsHelp.toggle() }) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Learn about AI summarization")
+                }
+
+                Text("Extract key insights from academic papers using intelligent text analysis")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+
+                HStack {
+                    Text("Summary Type:")
+                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                    Spacer()
+                }
+
+                // Summary Type Grid
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(SummaryType.allCases) { type in
+                        Button(action: {
+                            summaryType = type
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: type.icon)
+                                    .font(.system(size: 18))
+                                Text(type.name)
+                                    .font(.caption)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(summaryType == type ? Color.purple.opacity(0.2) : Color.clear)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(summaryType == type ? Color.purple : Color.secondary.opacity(0.3), lineWidth: 1.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help(type.description)
+                    }
+                }
+
+                if isSummarizing && activeAction == .summary {
+                    Button(action: {
+                        self.currentSummaryTask?.cancel()
+                        self.isSummarizing = false
+                        self.activeAction = nil
+                    }) {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Stop Generating")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                } else {
+                    Button(action: {
+                        activeAction = .summary
+                        extractTextFromPDF()
+                    }) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                            Text("Generate AI Summary")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                    .disabled(selectedFiles.filter { $0.isChecked }.isEmpty || isSummarizing)
+                }
+            }
+            .padding(12)
+        }
+        .alert("AI Summarization", isPresented: $showWritingToolsHelp) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This feature uses intelligent text analysis to extract the most important sentences from your PDF based on position and keyword scoring. It processes everything locally - no internet required, completely private.\n\nChoose from 4 summary formats:\n• TL;DR - Ultra-short (3-5 sentences)\n• Key Points - Main findings (7-10 bullets)\n• Abstract - Academic summary (10 sentences)\n• Full Summary - Comprehensive overview (20 sentences)")
+        }
+    }
+
+    @ViewBuilder
+    private var chatInterfaceView: some View {
+        // Advanced AI Tools Card
+        // Smart Q&A Chat Interface
+        GroupBox {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .foregroundColor(.blue)
+                    Text("Chat with PDF")
+                        .font(.headline)
+                    Spacer()
+                    if !chatHistory.isEmpty {
+                        Button("Save Chat") {
+                            saveConversation()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.blue)
+
+                        Button("Clear") {
+                            chatHistory.removeAll()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.bottom, 8)
+
+                // Chat Area
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if chatHistory.isEmpty {
+                                Text("Ask questions about your PDF. The AI will analyze the text to provide answers.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.top, 40)
+                            } else {
+                                ForEach(0..<chatHistory.count, id: \.self) { i in
+                                    let msg = chatHistory[i]
+                                    HStack(alignment: .top, spacing: 8) {
+                                        if msg.role == "System" {
+                                            Image(systemName: "sparkles")
+                                                .foregroundColor(.purple)
+                                                .font(.system(size: 14))
+                                                .padding(.top, 4)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(msg.content)
+                                                .textSelection(.enabled)
+                                                .padding(10)
+                                                .background(msg.role == "User" ? Color.blue.opacity(0.1) : Color(NSColor.textBackgroundColor))
+                                                .cornerRadius(12)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                                )
+
+                                            Button(action: {
+                                                NSPasteboard.general.clearContents()
+                                                NSPasteboard.general.setString(msg.content, forType: .string)
+                                            }) {
+                                                Label("Copy", systemImage: "doc.on.doc")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.leading, 10)
+                                        }
+
+                                        if msg.role == "User" {
+                                            Image(systemName: "person.circle.fill")
+                                                .foregroundColor(.blue)
+                                                .font(.system(size: 14))
+                                                .padding(.top, 4)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: msg.role == "User" ? .trailing : .leading)
+                                    .id(i)
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                    .frame(height: 300)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                    .onChange(of: chatHistory.count) { _ in
+                        if let last = chatHistory.indices.last {
+                            withAnimation {
+                                scrollProxy.scrollTo(last, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+                
+                // Input Area
+                HStack {
+                    TextField("Ask a question...", text: $qnaInput)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isThinking || selectedFiles.isEmpty)
+                        .onSubmit {
+                            Task {
+                                await performQnA()
+                            }
+                        }
+                    
+                    Button(action: {
+                        Task {
+                            await performQnA()
+                        }
+                    }) {
+                        if isThinking {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(qnaInput.isEmpty || isThinking || selectedFiles.isEmpty)
+                }
+                .padding(.top, 8)
+            }
+            .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private var relatedWorkView: some View {
+        // Related Work Finder
+        GroupBox {
+            VStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "link.circle.fill")
+                        .foregroundColor(.orange)
+                    Text("Related Work Finder")
+                        .font(.headline)
+                    Spacer()
+                    if !relatedWorkOutput.isEmpty {
+                        Button("Clear") {
+                            relatedWorkOutput = ""
+                            relatedWorkTopic = ""
+                        }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.bottom, 8)
+
+                Text("Find papers cited in your PDF that discuss a specific topic")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack {
+                    TextField("Topic (e.g., 'deep learning', 'climate change')", text: $relatedWorkTopic)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isSearchingRelatedWork || selectedFiles.isEmpty)
+
+                    Button(action: {
+                        Task {
+                            await findRelatedWork()
+                        }
+                    }) {
+                        if isSearchingRelatedWork {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Find", systemImage: "magnifyingglass")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(relatedWorkTopic.isEmpty || isSearchingRelatedWork || selectedFiles.isEmpty)
+                }
+
+                if !relatedWorkOutput.isEmpty {
+                    ScrollView {
+                        Text(relatedWorkOutput)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .frame(height: 200)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private var outputAreaView: some View {
+        // Output Area
+        GroupBox("AI Summary Output") {
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack {
+                    if !summaryText.isEmpty {
+                        Button(action: {
+                            summaryText = ""
+                            extractedText = ""
+                            activeAction = nil
+                        }) {
+                            Label("Clear", systemImage: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundColor(.red)
+                        .font(.caption)
+
+                        Button(action: {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(summaryText, forType: .string)
+                        }) {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    }
+                    Spacer()
+                }
+
+                // Main output display
+                ZStack {
+                    if summaryText.isEmpty {
+                        // Empty state
+                        VStack(spacing: 12) {
+                            if isSummarizing {
+                                // Processing state
+                                VStack(spacing: 16) {
+                                    ProgressView()
+                                        .scaleEffect(1.5)
+                                        .progressViewStyle(.circular)
+
+                                    Text("AI is analyzing your document...")
+                                        .font(.headline)
+                                        .foregroundColor(.purple)
+
+                                    Text("This may take a few moments")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            } else {
+                                // Initial empty state
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.purple.opacity(0.3))
+                                Text("Click 'Generate AI Summary' to begin")
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                Text("AI-powered summary will appear here")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary.opacity(0.7))
+                                    .multilineTextAlignment(.center)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 320)
+                    } else {
+                        // Summary result display
+                        ScrollView {
+                            Text(summaryText)
+                                .textSelection(.enabled)
+                                .font(.system(.body))
+                                .lineSpacing(6)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(minHeight: 320)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+                }
+
+            }
         }
     }
 
@@ -4054,7 +4252,12 @@ struct AITabView: View {
         extractedText = ""
         summaryText = ""
 
-        Task {
+        summaryText = ""
+
+        self.currentSummaryTask = Task {
+            // Check for cancellation at start
+            if Task.isCancelled { return }
+            
             // Extract full text from PDF first
             guard let pdfDoc = PDFDocument(url: file.url) else {
                 await MainActor.run {
@@ -4066,6 +4269,7 @@ struct AITabView: View {
 
             var fullText = ""
             for pageIndex in 0..<pdfDoc.pageCount {
+                if Task.isCancelled { return }
                 if let page = pdfDoc.page(at: pageIndex) {
                     if let pageText = page.string {
                         fullText += pageText + "\n\n"
@@ -4493,7 +4697,7 @@ struct ResearcherTabView: View {
     @Binding var outputText: String
     @Binding var isProcessing: Bool
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
-    @AppStorage("allowOnlineBibTeX") private var allowOnlineLookup = true
+    @AppStorage("referenceLookupMode") private var referenceLookupMode: ReferenceLookupMode = .hybrid
     @AppStorage("shortenAuthors") private var shortenAuthors = false  // NEW
     @AppStorage("abbreviateJournals") private var abbreviateJournals = false // NEW
     @AppStorage("useLaTeXEscaping") private var useLaTeXEscaping = false // NEW
@@ -4546,26 +4750,57 @@ struct ResearcherTabView: View {
                     
                     Spacer()
                     
-                    // Online Mode Toggle (Moved to Header)
-                    Toggle("Online Mode", isOn: $allowOnlineLookup)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .help("Enable online lookup (CrossRef/Semantic Scholar)")
-                    
-                    if allowOnlineLookup {
-                        Image(systemName: "wifi")
-                            .foregroundColor(.green)
-                            .font(.caption)
-                            .help("Online Mode Enabled")
-                    } else {
-                        Image(systemName: "wifi.slash")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                            .help("Offline Mode (Local Extraction Only)")
+                    // Reference Lookup Mode Picker
+                    Picker("Lookup Mode", selection: $referenceLookupMode) {
+                        ForEach(ReferenceLookupMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .frame(width: 120)
+                    .help("Select reference extraction mode: Offline, Online Only, or Hybrid")
                 }
                 .padding(.horizontal)
-                
+
+                // Tahoe Warning Banner
+                if #available(macOS 26.0, *) {
+                    // Tahoe available - no warning needed
+                } else {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.orange)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("macOS Tahoe Not Detected")
+                                    .font(.subheadline.bold())
+                                    .foregroundColor(.primary)
+
+                                if referenceLookupMode != .offline {
+                                    Text("AI extraction unavailable. Using heuristic parsing with online lookup.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("AI extraction unavailable. Switched to offline heuristic mode. Consider enabling Hybrid Mode for better results.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .padding(.horizontal)
+                }
+
                 // MAIN ACTION GRID
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 16) {
                     
@@ -4578,8 +4813,15 @@ struct ResearcherTabView: View {
                         isProcessing: isProcessing && activeAction == .bibtex,
                         isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
                     ) {
-                        activeAction = .bibtex
-                        generateBibEntry()
+                        if isProcessing && activeAction == .bibtex {
+                            // Stop action
+                             isCancelled = true
+                             extractionTask?.cancel()
+                        } else {
+                        } else {
+                            activeAction = .bibtex
+                            generateBibEntry()
+                        }
                     }
                     
                     // 2. References Extraction
@@ -4591,8 +4833,14 @@ struct ResearcherTabView: View {
                         isProcessing: isProcessing && activeAction == .references,
                         isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
                     ) {
-                        activeAction = .references
-                        extractReferencesAction()
+                         if isProcessing && activeAction == .references {
+                             // Stop action
+                             isCancelled = true
+                             extractionTask?.cancel()
+                         } else {
+                            activeAction = .references
+                            extractReferencesAction()
+                         }
                     }
                     
                     // 3. DOI Lookup (NEW)
@@ -4602,7 +4850,7 @@ struct ResearcherTabView: View {
                         color: .green,
                         isActive: activeAction == .lookup,
                         isProcessing: isProcessing && activeAction == .lookup,
-                        isDisabled: !allowOnlineLookup
+                        isDisabled: referenceLookupMode == .offline
                     ) {
                         activeAction = .lookup
                         // Logic handled in detailed view below
@@ -4702,9 +4950,25 @@ struct ResearcherTabView: View {
                 }
                 
                 // Output Area
-                GroupBox("Output") {
+                    GroupBox("Output") {
                     VStack(alignment: .trailing, spacing: 8) {
                         HStack {
+                            if isProcessing {
+                                Button(action: {
+                                    isCancelled = true
+                                    extractionTask?.cancel()
+                                    isProcessing = false
+                                }) {
+                                    HStack(spacing: 4) {
+                                        ProgressView().controlSize(.small)
+                                        Text("Stop Processing")
+                                    }
+                                    .foregroundColor(.red)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                            }
+                            
                             if !outputText.isEmpty {
                                 Button(action: { outputText = ""; activeAction = nil }) {
                                     Label("Clear", systemImage: "trash")
@@ -4983,13 +5247,18 @@ struct ResearcherTabView: View {
         
         let filesToProcess = checkedFiles
                 let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
-        let isOnlineAllowed = allowOnlineLookup // Capture value to avoid self capture in Task
+        let isOnlineAllowed = referenceLookupMode != .offline // Capture value to avoid self capture in Task
         
-        Task {
+        extractionTask = Task {
+            if Task.isCancelled { 
+                await MainActor.run { isProcessing = false }
+                return 
+            }
             var extractedEntries: [String] = []
             
             await withTaskGroup(of: String?.self) { group in
                 for file in filesToProcess {
+                    if Task.isCancelled { break }
                     group.addTask {
                         // If it's a .bib file, read content directly
                         if file.url.pathExtension.lowercased() == "bib" {
@@ -5093,7 +5362,7 @@ struct ResearcherTabView: View {
                     }
                 } else {
                     // Handle PDF
-                    let references = await extractReferences(url: file.url, options: opts, allowOnline: allowOnlineLookup, isCancelledCheck: { [self] in
+                    let references = await extractReferences(url: file.url, options: opts, mode: referenceLookupMode, isCancelledCheck: { [self] in
                         return isCancelled
                     }) { current, total in
                         // Update progress on main thread
@@ -5185,7 +5454,7 @@ struct ResearcherTabView: View {
                          if duplicateCount > 0 {
                              header += " (\(duplicateCount) duplicates removed)"
                          }
-                         header += "\n// Verified entries fetched from CrossRef/Semantic Scholar + Local Parse\n\n"
+                          header += "\n// Verified entries fetched from \(referenceLookupMode.rawValue) mode\n\n"
                     } else {
                         // Brief header for new batch
                         header = "// Added \(allReferences.count) new reference(s) from \(checkedFiles.count) file(s). Total: \(deduplicated.count).\n\n"
@@ -5358,7 +5627,7 @@ struct ResearcherTabView: View {
                 
                 // Pass allowOnlineLookup setting to enable CrossRef fallback if DOI is found
                         let opts = BibTeXFormatOptions(shortenAuthors: shortenAuthors, abbreviateJournals: abbreviateJournals, useLaTeXEscaping: useLaTeXEscaping)
-                if let bib = await extractBibTeX(url: file.url, allowOnline: self.allowOnlineLookup, options: opts) {
+                if let bib = await extractBibTeX(url: file.url, allowOnline: self.referenceLookupMode != .offline, options: opts) {
                     if let entry = parseBibTeXToMetadata(bib) {
                         let newName = generateFilename(author: entry.author, year: entry.year, title: entry.title, journal: entry.journal)
                         // Only add if different
@@ -6245,37 +6514,33 @@ struct SquareActionCard: View {
             VStack(spacing: 12) {
                 if isProcessing {
                     ProgressView()
-                        .scaleEffect(1.2)
-                        .frame(width: 40, height: 40)
+                        .scaleEffect(0.8)
+                    Text("Stop") // Change label to Stop when processing
+                        .font(.caption.bold())
+                        .foregroundColor(.red)
                 } else {
                     Image(systemName: icon)
-                        .font(.system(size: 32))
+                        .font(.system(size: 24))
                         .foregroundColor(isActive ? .white : color)
-                        .frame(width: 40, height: 40)
+                    
+                    Text(title)
+                        .font(.caption.bold())
+                        .foregroundColor(isActive ? .white : .primary)
                 }
-                
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.medium)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(isActive ? .white : .primary)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .aspectRatio(1.0, contentMode: .fill)
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isActive ? color : Color(NSColor.controlBackgroundColor))
-                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-            )
+            .frame(maxWidth: .infinity)
+            .frame(height: 100)
+            .background(isActive ? color : Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isActive ? color.opacity(0.8) : Color.gray.opacity(0.2), lineWidth: 1)
+                    .stroke(isActive ? color : Color.secondary.opacity(0.2), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.5 : 1.0)
+        .opacity(isDisabled ? 0.6 : 1.0)
     }
 }
 
@@ -6419,6 +6684,111 @@ extension ContentView {
             alert.messageText = "Extraction Complete"
             alert.informativeText = "Saved \(regions.count) images to \(outputDir.lastPathComponent)"
             alert.runModal()
+        }
+    }
+}
+
+// MARK: - Mode Card Component
+
+struct ModeCard: View {
+    let mode: ContentView.MainMode
+    let isEmphasized: Bool
+    let isDarkMode: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 20) {
+                // Icon with glow effect for emphasized card
+                ZStack {
+                    if isEmphasized {
+                        Circle()
+                            .fill(mode.color.opacity(0.2))
+                            .frame(width: 100, height: 100)
+                            .blur(radius: 20)
+                            .scaleEffect(isHovered ? 1.2 : 1.0)
+                    }
+
+                    Image(systemName: mode.icon)
+                        .font(.system(size: isEmphasized ? 52 : 44, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: isEmphasized
+                                    ? [mode.color, mode.color.opacity(0.7)]
+                                    : [mode.color.opacity(0.9), mode.color.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: isEmphasized ? mode.color.opacity(0.3) : .clear, radius: 10)
+                }
+                .frame(height: 100)
+
+                VStack(spacing: 8) {
+                    Text(mode.rawValue)
+                        .font(.system(size: isEmphasized ? 24 : 20, weight: .bold))
+                        .foregroundColor(isDarkMode ? .white : Color(red: 15/255, green: 23/255, blue: 42/255))
+
+                    Text(mode.description)
+                        .font(.system(size: 14))
+                        .foregroundColor(isDarkMode ? .white.opacity(0.6) : Color(red: 15/255, green: 23/255, blue: 42/255).opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                // "Get Started" indicator
+                HStack(spacing: 4) {
+                    Text(isEmphasized ? "Explore AI" : "Get Started")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(mode.color)
+
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(mode.color)
+                }
+                .opacity(isHovered ? 1 : 0.7)
+            }
+            .padding(32)
+            .frame(width: isEmphasized ? 340 : 300, height: isEmphasized ? 400 : 360)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(isDarkMode ? Color.white.opacity(0.05) : Color.white)
+                    .shadow(
+                        color: isEmphasized && isHovered
+                            ? mode.color.opacity(0.3)
+                            : (isDarkMode ? Color.black.opacity(0.3) : Color.black.opacity(0.1)),
+                        radius: isEmphasized && isHovered ? 20 : (isHovered ? 12 : 8),
+                        x: 0,
+                        y: isHovered ? 8 : 4
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(
+                        isEmphasized
+                            ? LinearGradient(
+                                colors: [mode.color.opacity(0.5), mode.color.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            : LinearGradient(
+                                colors: [Color.clear, Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                        lineWidth: isEmphasized ? 2 : 0
+                    )
+            )
+            .scaleEffect(isHovered ? 1.05 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
         }
     }
 }

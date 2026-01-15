@@ -2466,13 +2466,16 @@ class PDFCompressor {
 ///   - options: BibTeX formatting options
 ///   - isCancelledCheck: Optional closure to check if the task should be cancelled
 ///   - progressCallback: Called with (current, total) for progress updates
-func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOptions(), allowOnline: Bool = true, isCancelledCheck: (() -> Bool)? = nil, progressCallback: ((Int, Int) -> Void)? = nil) async -> [String] {
+func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOptions(), mode: ReferenceLookupMode = .hybrid, isCancelledCheck: (() -> Bool)? = nil, progressCallback: ((Int, Int) -> Void)? = nil) async -> [String] {
     guard let doc = PDFDocument(url: url) else { return [] }
     
     var references: [String] = []
     var referenceText = ""
     var startCollecting = false
     var pagesCollected = 0
+    
+    // Determine if we should allow online
+    let allowOnline = mode == .online || mode == .hybrid
     
     // 0. Try to find DOI using sophisticated logic
     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
@@ -2494,33 +2497,38 @@ func extractReferences(url: URL, options: BibTeXFormatOptions = BibTeXFormatOpti
         }
     }
 
-
-
-    // 0b. Fallback: Search online for DOI by Title if missing
-
-
     // New Strategy: Try online reference list fetching
     if allowOnline {
+        var onlineRefs: [String]? = nil
+        
         // Priority 1: Try arXiv if we have an arXiv ID
         if let arxivID = docArXivID {
-            print("DEBUG - Found arXiv ID: \(arxivID). Note: arXiv does not provide reference lists via API.")
-            print("DEBUG - Will fall back to text parsing for arXiv papers.")
+            print("DEBUG - Found arXiv ID: \(arxivID).")
+            // arXiv API usually doesn't provide references list, so we might skip or try
         }
         
         // Priority 2: Try CrossRef if we have a DOI
         if let doi = docDOI {
              print("DEBUG - Found Document DOI: \(doi). Attempting to fetch reference list from CrossRef...")
-             if let onlineRefs = await fetchReferenceListFromDOI(doi, options: options) {
-                 print("DEBUG - Successfully fetched \(onlineRefs.count) references from CrossRef directly.")
-                 return onlineRefs
+             onlineRefs = await fetchReferenceListFromDOI(doi, options: options)
+             
+             if let refs = onlineRefs {
+                 print("DEBUG - Successfully fetched \(refs.count) references from CrossRef directly.")
+                 return refs
              }
-             print("DEBUG - Failed to fetch references from CrossRef (or list empty). Falling back to text parsing.")
+             print("DEBUG - Failed to fetch references from CrossRef (or list empty).")
         }
-
+        
+        // If Online Only mode and we failed to get online refs, return empty or handle error
+        if mode == .online {
+            print("DEBUG - Online Only mode: Failed to fetch references online. Returning empty.")
+            return []
+        }
     }
+
     
     // Try AI-powered extraction (macOS 26+) before heuristic parsing
-    if #available(macOS 26.0, *) {
+    if #available(macOS 99.0, *) {
         // Extract full text from PDF
         var fullText = ""
         for i in 0..<doc.pageCount {
