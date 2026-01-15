@@ -3810,11 +3810,18 @@ struct AITabView: View {
     @State private var grammarPageSelection: String = "" // Page selection input (e.g., "1-5" or "1,3,5")
     @State private var grammarCheckAllPages: Bool = true // Toggle for all pages vs custom
 
+    // Cover letter state
+    @State private var coverLetterJournal: String = ""
+    @State private var coverLetterAuthor: String = ""
+    @State private var coverLetterText: String = ""
+    @State private var isGeneratingCoverLetter: Bool = false
+
     enum AIAction: String, CaseIterable, Identifiable {
         case summary = "Summarize"
         case chat = "AI Chat"
         case finder = "Finder"
         case grammar = "Grammar"
+        case coverLetter = "Cover Letter"
 
         var id: String { self.rawValue }
     }
@@ -3954,6 +3961,18 @@ struct AITabView: View {
                                 activeAction = .grammar
                             }
                         }
+
+                        // 5. Cover Letter Generator
+                        SquareActionCard(
+                            title: "Cover Letter",
+                            icon: "envelope.fill",
+                            color: .purple,
+                            isActive: activeAction == .coverLetter,
+                            isProcessing: isGeneratingCoverLetter && activeAction == .coverLetter,
+                            isDisabled: selectedFiles.filter { $0.isChecked }.isEmpty
+                        ) {
+                            activeAction = .coverLetter
+                        }
                     }
                     .padding(.horizontal)
 
@@ -3975,6 +3994,10 @@ struct AITabView: View {
                         if activeAction == .grammar {
                             grammarCheckView
                             outputAreaView
+                        }
+
+                        if activeAction == .coverLetter {
+                            coverLetterView
                         }
                     }
                     .padding(.horizontal)
@@ -4334,6 +4357,108 @@ struct AITabView: View {
                                 .padding()
                         }
                         .frame(height: 250)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                    }
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private var coverLetterView: some View {
+        GroupBox {
+            VStack(spacing: 12) {
+                // Instructions
+                Text("Generate a tailored cover letter for journal submission")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Journal Name Input
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Journal Name:")
+                        .font(.subheadline.bold())
+                    TextField("e.g., Nature Materials, Physical Review Letters", text: $coverLetterJournal)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isGeneratingCoverLetter)
+                }
+
+                // Author Name Input
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Corresponding Author:")
+                        .font(.subheadline.bold())
+                    TextField("e.g., Dr. Jane Smith", text: $coverLetterAuthor)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isGeneratingCoverLetter)
+                }
+
+                // Generate Button
+                Button(action: {
+                    Task {
+                        await generateCoverLetter()
+                    }
+                }) {
+                    HStack {
+                        if isGeneratingCoverLetter {
+                            ProgressView().controlSize(.small)
+                            Text("Generating...")
+                        } else {
+                            Image(systemName: "envelope.fill")
+                            Text("Generate Cover Letter")
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(coverLetterJournal.isEmpty || coverLetterAuthor.isEmpty || isGeneratingCoverLetter || selectedFiles.filter { $0.isChecked }.isEmpty)
+
+                // Output Display
+                if !coverLetterText.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Generated Cover Letter")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(coverLetterText, forType: .string)
+                            }
+                            .font(.caption)
+                            .buttonStyle(.plain)
+                            .foregroundColor(.blue)
+
+                            Button("Save as TXT") {
+                                saveCoverLetter()
+                            }
+                            .font(.caption)
+                            .buttonStyle(.plain)
+                            .foregroundColor(.blue)
+
+                            Button("Clear") {
+                                coverLetterText = ""
+                                coverLetterJournal = ""
+                                coverLetterAuthor = ""
+                            }
+                            .font(.caption)
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
+                        }
+
+                        ScrollView {
+                            Text(coverLetterText)
+                                .textSelection(.enabled)
+                                .font(.system(.body))
+                                .lineSpacing(4)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        }
+                        .frame(height: 350)
                         .background(Color(NSColor.textBackgroundColor))
                         .cornerRadius(6)
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
@@ -5449,6 +5574,87 @@ struct AITabView: View {
         }
 
         isSearchingRelatedWork = false
+    }
+
+    // MARK: - Cover Letter Generator
+    func generateCoverLetter() async {
+        guard !coverLetterJournal.isEmpty, !coverLetterAuthor.isEmpty else { return }
+        guard !selectedFiles.isEmpty else { return }
+
+        isGeneratingCoverLetter = true
+        coverLetterText = ""
+
+        // Extract text from first checked PDF
+        guard let pdfURL = selectedFiles.filter({ $0.isChecked }).first?.url,
+              let doc = PDFDocument(url: pdfURL) else {
+            coverLetterText = "Error: Could not load PDF"
+            isGeneratingCoverLetter = false
+            return
+        }
+
+        // Extract abstract and key sections
+        var paperText = ""
+        for i in 0..<min(3, doc.pageCount) {
+            if let page = doc.page(at: i), let pageText = page.string {
+                paperText += pageText + "\n\n"
+                if paperText.count > 5000 { break }
+            }
+        }
+
+        let limitedText = String(paperText.prefix(5000))
+
+        // Use FoundationModels to generate cover letter
+        if #available(macOS 26.0, *) {
+            do {
+                let session = LanguageModelSession()
+
+                let prompt = """
+                You are an academic writing assistant. Generate a professional cover letter for submitting a research paper to a journal.
+
+                Journal: \(coverLetterJournal)
+                Corresponding Author: \(coverLetterAuthor)
+
+                Paper Content (Abstract/Introduction):
+                \(limitedText)
+
+                Generate a professional, persuasive cover letter that:
+                1. Introduces the paper and its significance
+                2. Highlights the novelty and key contributions
+                3. Explains why it's suitable for \(coverLetterJournal)
+                4. Mentions the impact and potential readership
+                5. States that the work is original and not under consideration elsewhere
+                6. Thanks the editor
+
+                Format as a proper business letter with date, salutation, body paragraphs, and closing.
+                Use formal academic tone. Keep it concise (300-400 words).
+                """
+
+                let response = try await session.respond(to: prompt)
+                coverLetterText = response.content
+            } catch {
+                coverLetterText = "Error generating cover letter: \(error.localizedDescription)"
+            }
+        } else {
+            coverLetterText = "Cover Letter Generator requires macOS 26+"
+        }
+
+        isGeneratingCoverLetter = false
+    }
+
+    func saveCoverLetter() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "CoverLetter_\(coverLetterJournal.replacingOccurrences(of: " ", with: "_")).txt"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                do {
+                    try coverLetterText.write(to: url, atomically: true, encoding: .utf8)
+                } catch {
+                    print("Failed to save cover letter: \(error)")
+                }
+            }
+        }
     }
 }
 
