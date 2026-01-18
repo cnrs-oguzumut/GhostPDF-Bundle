@@ -1,0 +1,53 @@
+Building CleverGhost Beta...
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling CleverGhost CitationFormatter.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:7361:31: error: use of 'cleanBibTeX' refers to instance method rather than global function 'cleanBibTeX(_:fieldsToRemove:options:)' in module 'CleverGhost'
+7359 |             if shouldClean {
+7360 |                 // Call the global cleanBibTeX function from PDFCompressor.swift
+7361 |                 combinedBib = cleanBibTeX(combinedBib)
+     |                               |- error: use of 'cleanBibTeX' refers to instance method rather than global function 'cleanBibTeX(_:fieldsToRemove:options:)' in module 'CleverGhost'
+     |                               `- note: use 'CleverGhost.' to reference the global function in module 'CleverGhost'
+7362 |             }
+7363 | 
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:4232:6: note: 'cleanBibTeX(_:fieldsToRemove:options:)' declared here
+4230 | ///   - fieldsToRemove: Set of field names to remove (default includes abstract, language, etc.)
+4231 | /// - Returns: Cleaned BibTeX string
+4232 | func cleanBibTeX(_ bibtexText: String, fieldsToRemove: Set<String>? = nil, options: BibTeXFormatOptions = BibTeXFormatOptions()) -> String {
+     |      `- note: 'cleanBibTeX(_:fieldsToRemove:options:)' declared here
+4233 |     // 1. Global Cleanup (Normalization & Tag Stripping)
+4234 |     var cleanedGlobal = bibtexText
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:895:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 893 | 
+ 894 |     // First, try to extract DOI using unified logic
+ 895 |     var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 896 |     var arxivID = ""
+ 897 |     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1055:9: warning: variable 'number' was never mutated; consider changing to 'let' constant
+1053 |     var journal = "Unknown Journal"
+1054 |     var volume = ""
+1055 |     var number = ""
+     |         `- warning: variable 'number' was never mutated; consider changing to 'let' constant
+1056 |     var pages = ""
+1057 |     var doi = extractedDOI // Use the DOI already extracted
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1057:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1055 |     var number = ""
+1056 |     var pages = ""
+1057 |     var doi = extractedDOI // Use the DOI already extracted
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1058 |     
+1059 |     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2600:9: warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2598 |     
+2599 |     // 0. Try to find DOI using sophisticated logic
+2600 |     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+     |         `- warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2601 |     var docArXivID: String? = nil
+2602 |     

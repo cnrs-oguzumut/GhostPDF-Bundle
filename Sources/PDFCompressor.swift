@@ -656,6 +656,59 @@ class PDFCompressor {
         progressHandler(1.0)
     }
     
+    static func findVectorExtractor() -> String? {
+        // Check bundle first
+        if let resourcePath = Bundle.main.resourcePath {
+            let path = "\(resourcePath)/cvector_extractor"
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        // Fallback to local development path if needed (e.g. scripts/dist)
+        // For now, return nil if not found in bundle
+        return nil
+    }
+
+    static func extractVectorDrawings(
+        input: URL,
+        outputDir: URL,
+        progressHandler: @escaping (Double) -> Void
+    ) async throws {
+        
+        guard let extractorPath = findVectorExtractor() else {
+            throw CompressionError.ghostscriptFailed("Vector extractor binary not found. Please ensure 'cvector_extractor' is in the app bundle.")
+        }
+        
+        progressHandler(0.1)
+        
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: extractorPath)
+        task.arguments = [input.path, outputDir.path]
+        
+        // Environment for Python/PyInstaller if needed
+        var env = ProcessInfo.processInfo.environment
+        env["TMPDIR"] = FileManager.default.temporaryDirectory.path
+        task.environment = env
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe // Capture both
+        
+        try task.run()
+        
+        // Read output for progress (optional, if script prints progress)
+        // For now just wait
+        task.waitUntilExit()
+        
+        progressHandler(1.0)
+        
+        if task.terminationStatus != 0 {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw CompressionError.ghostscriptFailed("Vector extraction failed: \(msg)")
+        }
+    }
+    
     static func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }

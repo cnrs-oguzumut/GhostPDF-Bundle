@@ -1,0 +1,209 @@
+Building GhostPDF+ Beta...
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling GhostPDF_ CitationFormatter.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4474:14: error: consecutive statements on a line must be separated by ';'
+4472 |                     }
+4473 |                 }
+4474 |             } else {
+     |              `- error: consecutive statements on a line must be separated by ';'
+4475 |                 await MainActor.run {
+4476 |                     grammarText = "AI Grammar Check requires macOS 15.1 (Tahoe) or later."
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4474:15: error: expected expression
+4472 |                     }
+4473 |                 }
+4474 |             } else {
+     |               `- error: expected expression
+4475 |                 await MainActor.run {
+4476 |                     grammarText = "AI Grammar Check requires macOS 15.1 (Tahoe) or later."
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4490:5: error: attribute 'private' can only be used in a non-local scope
+4488 | 
+4489 |     @available(macOS 26.0, *)
+4490 |     private func proofreadChunk(prompt: String) async -> String? {
+     |     `- error: attribute 'private' can only be used in a non-local scope
+4491 |         // This helper is now redundant as we reuse the session in the loop above
+4492 |         return nil
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4496:5: error: attribute 'private' can only be used in a non-local scope
+4494 | 
+4495 | 
+4496 |     private func extractTextFromPDF() {
+     |     `- error: attribute 'private' can only be used in a non-local scope
+4497 |         let checkedFiles = selectedFiles.filter { $0.isChecked }
+4498 |         guard let file = checkedFiles.first else { return }
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4576:5: error: attribute 'private' can only be used in a non-local scope
+4574 | 
+4575 |     @available(macOS 26.0, *)
+4576 |     private func generateAISummary(text: String, type: SummaryType) async -> String? {
+     |     `- error: attribute 'private' can only be used in a non-local scope
+4577 |         do {
+4578 |             print("DEBUG - generateAISummary: Creating prompt...")
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4598:5: error: attribute 'private' can only be used in a non-local scope
+4596 |     }
+4597 | 
+4598 |     private func createSummarizationPrompt(for type: SummaryType, text: String) -> String {
+     |     `- error: attribute 'private' can only be used in a non-local scope
+4599 |         // Clean text: remove citations and references
+4600 |         let cleanedText = cleanTextForSummarization(text)
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4655:5: error: attribute 'private' can only be used in a non-local scope
+4653 |     }
+4654 | 
+4655 |     private func cleanTextForSummarization(_ text: String) -> String {
+     |     `- error: attribute 'private' can only be used in a non-local scope
+4656 |         var cleaned = text
+4657 | 
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4680:5: error: attribute 'private' can only be used in a non-local scope
+4678 |     }
+4679 | 
+4680 |     private func formatSummary(_ text: String, type: SummaryType) -> String {
+     |     `- error: attribute 'private' can only be used in a non-local scope
+4681 |         // Split into sentences and filter out citations and references
+4682 |         let allSentences = text.components(separatedBy: ". ").filter { sentence in
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:6797:1: error: declaration is only valid at file scope
+6795 | // MARK: - AI Q&A Logic
+6796 | 
+6797 | extension ContentView {
+     | `- error: declaration is only valid at file scope
+6798 |     @MainActor
+6799 |     func performQnA() async {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:6843:1: error: declaration is only valid at file scope
+6841 | // MARK: - Manual Region Extraction Logic
+6842 | 
+6843 | extension ContentView {
+     | `- error: declaration is only valid at file scope
+6844 |     @MainActor
+6845 |     func saveManualRegions(for file: PDFFile, regions: [PageRegion]) async {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:7043:1: error: expected '}' in struct
+3772 | }
+3773 | 
+3774 | struct AITabView: View {
+     |                        `- note: to match this opening '{'
+3775 |     @Binding var selectedFiles: [ContentView.PDFFile]
+3776 |     @Binding var summaryType: SummaryType
+     :
+7041 |     }
+7042 | }
+7043 | 
+     | `- error: expected '}' in struct
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:254:21: error: cannot find 'ModeCard' in scope
+ 252 |             HStack(spacing: 24) {
+ 253 |                 ForEach(MainMode.allCases) { mode in
+ 254 |                     ModeCard(
+     |                     `- error: cannot find 'ModeCard' in scope
+ 255 |                         mode: mode,
+ 256 |                         isEmphasized: mode == .researcher,
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:446:29: error: cannot find 'ResearcherTabView' in scope
+ 444 |                                 .allowsHitTesting(selectedTab == 5)
+ 445 | 
+ 446 |                             ResearcherTabView(
+     |                             `- error: cannot find 'ResearcherTabView' in scope
+ 447 |                                 selectedFiles: $selectedFiles,
+ 448 |                                 outputText: $researcherOutputText,
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:456:25: error: cannot find 'BibTeXFormatterView' in scope
+ 454 | 
+ 455 |                         // BibTeX tab enabled
+ 456 |                         BibTeXFormatterView(
+     |                         `- error: cannot find 'BibTeXFormatterView' in scope
+ 457 |                             selectedFiles: $selectedFiles,
+ 458 |                             outputText: $bibFormatterOutputText,
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:524:31: error: cannot find 'saveManualRegions' in scope
+ 522 |                     // Process regions for this file
+ 523 |                     Task {
+ 524 |                         await saveManualRegions(for: firstFile, regions: regions)
+     |                               `- error: cannot find 'saveManualRegions' in scope
+ 525 |                     }
+ 526 |                 }
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4022:44: error: missing argument for parameter 'url' in call
+4020 |                     Button(action: {
+4021 |                         activeAction = .summary
+4022 |                         extractTextFromPDF()
+     |                                            `- error: missing argument for parameter 'url' in call
+4023 |                     }) {
+4024 |                         HStack {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:648:6: note: 'extractTextFromPDF(url:password:)' declared here
+ 646 | 
+ 647 | /// Extract all text content from a PDF
+ 648 | func extractTextFromPDF(url: URL, password: String? = nil) -> String? {
+     |      `- note: 'extractTextFromPDF(url:password:)' declared here
+ 649 |     guard let doc = PDFDocument(url: url) else { return nil }
+ 650 |     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4055:29: error: cannot find 'saveConversation' in scope
+4053 |                         Spacer()
+4054 |                         Button("Save Chat") {
+4055 |                             saveConversation()
+     |                             `- error: cannot find 'saveConversation' in scope
+4056 |                         }
+4057 |                         .font(.caption)
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4149:39: error: cannot find 'performQnA' in scope
+4147 |                         .onSubmit {
+4148 |                             Task {
+4149 |                                 await performQnA()
+     |                                       `- error: cannot find 'performQnA' in scope
+4150 |                             }
+4151 |                         }
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4155:35: error: cannot find 'performQnA' in scope
+4153 |                     Button(action: {
+4154 |                         Task {
+4155 |                             await performQnA()
+     |                                   `- error: cannot find 'performQnA' in scope
+4156 |                         }
+4157 |                     }) {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift:4201:35: error: cannot find 'findRelatedWork' in scope
+4199 |                     Button(action: {
+4200 |                         Task {
+4201 |                             await findRelatedWork()
+     |                                   `- error: cannot find 'findRelatedWork' in scope
+4202 |                         }
+4203 |                     }) {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:776:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 774 | 
+ 775 |     // First, try to extract DOI using unified logic
+ 776 |     var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 777 |     var arxivID = ""
+ 778 |     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:936:9: warning: variable 'number' was never mutated; consider changing to 'let' constant
+ 934 |     var journal = "Unknown Journal"
+ 935 |     var volume = ""
+ 936 |     var number = ""
+     |         `- warning: variable 'number' was never mutated; consider changing to 'let' constant
+ 937 |     var pages = ""
+ 938 |     var doi = extractedDOI // Use the DOI already extracted
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:938:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 936 |     var number = ""
+ 937 |     var pages = ""
+ 938 |     var doi = extractedDOI // Use the DOI already extracted
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 939 |     
+ 940 |     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2481:9: warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2479 |     
+2480 |     // 0. Try to find DOI using sophisticated logic
+2481 |     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+     |         `- warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2482 |     var docArXivID: String? = nil
+2483 |     

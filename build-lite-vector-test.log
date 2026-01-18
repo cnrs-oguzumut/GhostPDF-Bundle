@@ -1,0 +1,43 @@
+=========================================
+Building GhostPDF+ Lite 1.0.0 (No Ghostscript)
+=========================================
+Building release binary...
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling GhostPDF_ ComparisonView.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:292:9: warning: variable 'bitmapInfo' was never mutated; consider changing to 'let' constant
+ 290 |     }
+ 291 |     
+ 292 |     var bitmapInfo: CGBitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+     |         `- warning: variable 'bitmapInfo' was never mutated; consider changing to 'let' constant
+ 293 |     
+ 294 |     return CGImage(
+[3/5] Write Objects.LinkFileList
+[4/5] Linking GhostPDF+
+Build complete! (23.50s)
+Warning: No icon file found (checked GhostPDF+.icns and assets/icon.png)
+Bundling vector extractor...
+
+Signing app bundle with hardened runtime...
+build-lite/GhostPDF+.app/Contents/MacOS/GhostPDF+: replacing existing signature
+build-lite/GhostPDF+.app: replacing existing signature
+Verifying signature...
+build-lite/GhostPDF+.app: valid on disk
+build-lite/GhostPDF+.app: satisfies its Designated Requirement
+
+Creating DMG for distribution...
+created: /Users/usalman/pdf_compressor_store/NanoPDF-Complete/dist/GhostPDF+-1.0.0-Lite.dmg
+
+=========================================
+Build Complete!
+=========================================
+
+App bundle: build-lite/GhostPDF+.app
+DMG file: dist/GhostPDF+-1.0.0-Lite.dmg
+
+This LITE version requires users to install Ghostscript via Homebrew:
+  brew install ghostscript
+
+NOTE: Notarization skipped. Run notarization separately when ready.
+

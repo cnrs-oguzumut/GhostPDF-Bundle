@@ -1,0 +1,44 @@
+Building GhostPDF+ Beta...
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling GhostPDF_ CitationFormatter.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:776:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 774 | 
+ 775 |     // First, try to extract DOI using unified logic
+ 776 |     var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 777 |     var arxivID = ""
+ 778 |     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:936:9: warning: variable 'number' was never mutated; consider changing to 'let' constant
+ 934 |     var journal = "Unknown Journal"
+ 935 |     var volume = ""
+ 936 |     var number = ""
+     |         `- warning: variable 'number' was never mutated; consider changing to 'let' constant
+ 937 |     var pages = ""
+ 938 |     var doi = extractedDOI // Use the DOI already extracted
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:938:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 936 |     var number = ""
+ 937 |     var pages = ""
+ 938 |     var doi = extractedDOI // Use the DOI already extracted
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 939 |     
+ 940 |     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+
+Rename failed: /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift-8b61b3f0.o.tmp -> /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift.o: No such file or directory
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2481:9: warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2479 |     
+2480 |     // 0. Try to find DOI using sophisticated logic
+2481 |     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+     |         `- warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2482 |     var docArXivID: String? = nil
+2483 |     
+
+<unknown>:0: error: error closing '/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift.o' for output: /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift-8b61b3f0.o.tmp => /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/PDFCompressor.swift.o: No such file or directory
+Rename failed: /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift-eba6990e.o.tmp -> /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift.o: No such file or directory
+<unknown>:0: error: error closing '/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift.o' for output: /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift-eba6990e.o.tmp => /Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/arm64-apple-macosx/release/GhostPDF_.build/ContentView.swift.o: No such file or directory
+error: input file '/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift' was modified during the build
+error: input file '/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/ContentView.swift' was modified during the build
+error: error: accessing build database "/Users/usalman/pdf_compressor_store/NanoPDF-Complete/.build/build.db": disk I/O error

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 enum ExtractMode: String, CaseIterable, Identifiable {
     case renderPage = "Render Page as Image"
     case extractEmbedded = "Extract Embedded Images"
+    case extractVectors = "Extract Vector Drawings"
     
     var id: String { rawValue }
 }
@@ -573,6 +574,17 @@ struct ContentView: View {
                                     format: imageFormat,
                                     dpi: imageDPI,
                                     password: currentPassword
+                                ) { prog in
+                                     Task { @MainActor in
+                                        selectedFiles[index].status = .compressing(prog)
+                                        let perFile = 1.0 / Double(checkedFiles.count)
+                                        totalProgress = (Double(lastResults.count) * perFile) + (prog * perFile)
+                                    }
+                                }
+                            } else if extractMode == .extractVectors {
+                                try await PDFCompressor.extractVectorDrawings(
+                                    input: file.url,
+                                    outputDir: fileFolder
                                 ) { prog in
                                      Task { @MainActor in
                                         selectedFiles[index].status = .compressing(prog)
@@ -2508,6 +2520,11 @@ struct ExtractImagesSettingsView: View {
                     }
                     
                     SliderRow(label: "Resolution", value: $imageDPI, range: 72...600, suffix: " dpi")
+                } else if extractMode == .extractVectors {
+                     Text("Extracts vector drawings as SVG files using a bundled Python tool. Requires the external binary.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text("Extracts embedded images from the PDF (supports JPEG, PNG & CMYK). CMYK images are converted to RGB PNGs.")
                         .font(.caption)

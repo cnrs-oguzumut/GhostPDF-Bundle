@@ -1,0 +1,41 @@
+Building GhostPDF+ Beta...
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling GhostPDF_ CitationFormatter.swift
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:841:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 839 | 
+ 840 |     // First, try to extract DOI using unified logic
+ 841 |     var doi = await findDOI(in: doc, allowOnline: allowOnline) ?? ""
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+ 842 |     var arxivID = ""
+ 843 |     
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1001:9: warning: variable 'number' was never mutated; consider changing to 'let' constant
+ 999 |     var journal = "Unknown Journal"
+1000 |     var volume = ""
+1001 |     var number = ""
+     |         `- warning: variable 'number' was never mutated; consider changing to 'let' constant
+1002 |     var pages = ""
+1003 |     var doi = extractedDOI // Use the DOI already extracted
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:1003:9: warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1001 |     var number = ""
+1002 |     var pages = ""
+1003 |     var doi = extractedDOI // Use the DOI already extracted
+     |         `- warning: variable 'doi' was never mutated; consider changing to 'let' constant
+1004 |     
+1005 |     if let firstPage = doc.page(at: 0), let text = firstPage.string {
+
+/Users/usalman/pdf_compressor_store/NanoPDF-Complete/Sources/PDFCompressor.swift:2546:9: warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2544 |     
+2545 |     // 0. Try to find DOI using sophisticated logic
+2546 |     var docDOI: String? = await findDOI(in: doc, allowOnline: allowOnline)
+     |         `- warning: variable 'docDOI' was never mutated; consider changing to 'let' constant
+2547 |     var docArXivID: String? = nil
+2548 |     
+[3/5] Write Objects.LinkFileList
+[4/5] Linking GhostPDF+
+Build complete! (37.81s)
+build-beta/GhostPDF+ Beta.app: replacing existing signature
+Beta Build complete: build-beta/GhostPDF+ Beta.app
