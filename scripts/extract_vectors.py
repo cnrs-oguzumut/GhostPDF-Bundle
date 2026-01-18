@@ -117,14 +117,37 @@ def extract_vectors(pdf_path, output_dir=None):
                 continue
             rects.append(r)
 
-        # 1. Pre-cluster ALL vectors into "visual objects" first
-        # This identifies distinct parts (graphs, sub-figures) based on proximity
+        # Collect Image Rects and XREFs for Hybrid Detection & Extraction
+        # We store (rect, xref) tuples to retrieve the specific image later.
+        page_image_data = [] 
+        try:
+            image_list = page.get_images()
+            for img in image_list:
+                xref = img[0]
+                img_rects = page.get_image_rects(xref)
+                for r in img_rects:
+                    if r.width <= 1.0 or r.height <= 1.0: continue
+                    
+                    # Filter out full-page images (backgrounds)
+                    img_area = r.width * r.height
+                    page_area = page.rect.width * page.rect.height
+                    if img_area > (page_area * 0.5):
+                        continue
+                        
+                    page_image_data.append((r, xref))
+        except Exception as e:
+            print(f"  Warning: Could not get image rects: {e}")
+
         if rects:
             # Low threshold (15) to maintain separation of distinct visual elements
-            # The Partition Strategy will unify elements belonging to the same figure zone.
             visual_objects = merge_rects(rects, threshold=15)
         else:
             visual_objects = []
+
+        # ... (Partitioning and Captioning logic remains standard) ...
+
+    # JUMP TO EXTRACTION LOOP (Implementation split due to context gap)
+    # This chunk handles the Image Collection. The next chunk will handle the Export.
 
         # 2. Find captions
         captions = find_figure_captions(page)
@@ -231,10 +254,40 @@ def extract_vectors(pdf_path, output_dir=None):
                 # Export as high-resolution pixmap first for maximum quality
                 pix = new_page.get_pixmap(dpi=dpi)
 
-                # Save as high-quality PNG
-                png_filename = f"Page{i+1}_Vector{j+1}.png"
-                png_path = os.path.join(output_dir, png_filename)
-                pix.save(png_path)
+                # Check for Hybrid (Overlap with Image)
+                is_hybrid = False
+                hybrid_xref = 0
+                for img_r, xref in page_image_data:
+                    if rect.intersects(img_r):
+                        is_hybrid = True
+                        hybrid_xref = xref
+                        break 
+                
+                if is_hybrid:
+                    # 1. Save Vector Crop as "_hybrid_vector.png"
+                    png_filename = f"Page{i+1}_Vector{j+1}_hybrid_vector.png"
+                    png_path = os.path.join(output_dir, png_filename)
+                    pix.save(png_path)
+                    
+                    # 2. Extract Normal Image as "_hybrid_image.png"
+                    try:
+                        img_pix = fitz.Pixmap(src_doc, hybrid_xref)
+                        # Convert CMYK to RGB if needed
+                        if img_pix.n - img_pix.alpha > 3:
+                            img_pix = fitz.Pixmap(fitz.csRGB, img_pix)
+                            
+                        img_filename = f"Page{i+1}_Vector{j+1}_hybrid_image.png"
+                        img_path = os.path.join(output_dir, img_filename)
+                        img_pix.save(img_path)
+                        img_pix = None
+                    except Exception as e:
+                        print(f"  Warning: Could not extract hybrid image source: {e}")
+                        
+                else:
+                    # Standard Vector Extraction
+                    png_filename = f"Page{i+1}_Vector{j+1}.png"
+                    png_path = os.path.join(output_dir, png_filename)
+                    pix.save(png_path)
                 
                 # SVG export removed per user request
                 # svg = new_page.get_svg_image(matrix=fitz.Matrix(1, 1))
