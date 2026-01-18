@@ -171,6 +171,11 @@ def extract_vectors(pdf_path, output_dir=None):
                 for r in group_rects[1:]:
                     union = union | r
 
+                # FIX: Clip the bottom to the caption top
+                # This ensures no caption text is included in the vector crop
+                if union.y1 > floor_y:
+                    union = fitz.Rect(union.x0, union.y0, union.x1, floor_y)
+
                 caption_groups.append({
                     "caption": caption["text"],
                     "rect": union
@@ -231,12 +236,9 @@ def extract_vectors(pdf_path, output_dir=None):
                 png_path = os.path.join(output_dir, png_filename)
                 pix.save(png_path)
                 
-                # ALSO Save as SVG for debugging
-                svg = new_page.get_svg_image(matrix=fitz.Matrix(1, 1))
-                svg_filename = f"Page{i+1}_Vector{j+1}.svg"
-                svg_path = os.path.join(output_dir, svg_filename)
-                with open(svg_path, "w") as f:
-                    f.write(svg)
+                # SVG export removed per user request
+                # svg = new_page.get_svg_image(matrix=fitz.Matrix(1, 1))
+                # ...
                 
                 temp_doc.close()
                 total_images += 1
