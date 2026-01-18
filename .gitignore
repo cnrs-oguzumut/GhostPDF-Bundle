@@ -12,3 +12,7 @@ build-lite.sh
 build-bundled-notarized.sh
 build-sandboxed.sh
 build-mas.sh
+build-lite/
+build-mas/
+build-beta/
+build-bundled/

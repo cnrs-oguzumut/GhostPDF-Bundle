@@ -3,7 +3,86 @@ import os
 import fitz  # PyMuPDF
 import re
 
-print("VectorExtractor v2.1 (Upscale + TextAsPath)")
+print("VectorExtractor v2.2 (Caption-Aware)")
+
+def find_figure_captions(page):
+    """Find figure captions and subfigure labels on the page"""
+    captions = []
+    text_dict = page.get_text("dict")
+
+    # Patterns for figure captions and labels
+    fig_patterns = [
+        r'(?i)figure\s+\d+',  # "Figure 1", "figure 2", etc.
+        r'(?i)fig\.?\s+\d+',  # "Fig. 1", "fig 2", etc.
+        r'\([a-z]\)',          # "(a)", "(b)", "(c)", etc.
+        r'\b[a-z]\)',          # "a)", "b)", "c)", etc.
+    ]
+
+    for block in text_dict.get("blocks", []):
+        if block.get("type") != 0:  # Skip non-text blocks
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                text = span.get("text", "").strip()
+                for pattern in fig_patterns:
+                    if re.search(pattern, text):
+                        bbox = fitz.Rect(span["bbox"])
+                        captions.append({
+                            "text": text,
+                            "rect": bbox,
+                            "type": "label" if len(text) <= 4 else "caption"
+                        })
+                        break
+
+    return captions
+
+def group_by_captions(rects, captions, page_rect):
+    """Group rectangles based on nearby captions"""
+    if not captions:
+        return None
+
+    # Find main figure captions (not subfigure labels)
+    main_captions = [c for c in captions if c["type"] == "caption"]
+    if not main_captions:
+        return None
+
+    # Sort captions by vertical position (top to bottom)
+    main_captions.sort(key=lambda c: c["rect"].y0)
+
+    # For each main caption, find all graphics below/beside it
+    caption_groups = []
+    for idx, caption in enumerate(main_captions):
+        # Determine the bottom boundary: next caption or page end
+        if idx + 1 < len(main_captions):
+            bottom_boundary = main_captions[idx + 1]["rect"].y0
+        else:
+            bottom_boundary = page_rect.y1
+
+        # Create search region: from caption to next caption/page bottom
+        # Look both above and below caption (within reason)
+        search_rect = fitz.Rect(
+            page_rect.x0,  # Full width of page
+            max(caption["rect"].y0 - 100, page_rect.y0),  # Look up to 100pt above
+            page_rect.x1,
+            bottom_boundary
+        )
+
+        # Find all graphics in this region
+        group_rects = [r for r in rects if search_rect.intersects(r)]
+
+        if group_rects:
+            # Union all rects in this group
+            union_rect = group_rects[0]
+            for r in group_rects[1:]:
+                union_rect = union_rect | r
+
+            caption_groups.append({
+                "caption": caption["text"],
+                "rect": union_rect,
+                "subfigures": group_rects
+            })
+
+    return caption_groups
 
 def rects_are_close(r1, r2, threshold=40):
     if r1.intersects(r2):
@@ -60,36 +139,56 @@ def extract_vectors(pdf_path, output_dir=None):
         paths = page.get_drawings()
         if not paths:
             continue
-            
+
         print(f"Page {i+1}: Analyzing {len(paths)} vector paths...")
-        
+
         rects = []
         for path in paths:
             r = path["rect"]
             if r.width <= 1.0 or r.height <= 1.0:
                 continue
             rects.append(r)
-            
-        merged_groups = merge_rects(rects, threshold=40)
-        
+
+        # Hybrid approach: caption-based + clustering for uncaptioned
+        captions = find_figure_captions(page)
+        caption_groups = group_by_captions(rects, captions, page.rect)
+
         valid_groups = []
-        page_area = page.rect.width * page.rect.height
+        used_rects = set()
 
-        for r in merged_groups:
-            if r.width <= 5 or r.height <= 5: continue
+        # First, add caption-based groups
+        if caption_groups:
+            print(f"  Found {len(caption_groups)} caption-based figure(s)")
+            for g in caption_groups:
+                valid_groups.append(g["rect"])
+                # Mark all rects used by this caption group
+                for r in g["subfigures"]:
+                    used_rects.add((r.x0, r.y0, r.x1, r.y1))
 
-            group_area = r.width * r.height
-            if group_area > (page_area * 0.95):
-                print(f"  Skipping group covering >95% of page.")
-                continue
+        # Then, cluster remaining rects that weren't part of caption groups
+        remaining_rects = [r for r in rects
+                          if (r.x0, r.y0, r.x1, r.y1) not in used_rects]
 
-            valid_groups.append(r)
-        
+        if remaining_rects:
+            print(f"  Clustering {len(remaining_rects)} uncaptioned graphics...")
+            merged_groups = merge_rects(remaining_rects, threshold=40)
+
+            page_area = page.rect.width * page.rect.height
+            for r in merged_groups:
+                if r.width <= 5 or r.height <= 5: continue
+
+                group_area = r.width * r.height
+                if group_area > (page_area * 0.95):
+                    print(f"  Skipping group covering >95% of page.")
+                    continue
+
+                valid_groups.append(r)
+
         if not valid_groups:
             print(f"  No valid vector groups found on Page {i+1}")
             continue
-            
-        print(f"  Found {len(valid_groups)} vector groups on Page {i+1}")
+
+        print(f"  Extracting {len(valid_groups)} vector group(s) on Page {i+1}")
         
         for j, rect in enumerate(valid_groups):
             try:
