@@ -149,40 +149,109 @@ def extract_vectors(pdf_path, output_dir=None):
                 continue
             rects.append(r)
 
-        # Hybrid approach: caption-based + clustering for uncaptioned
+        # 1. Pre-cluster ALL vectors into "visual objects" first
+        # This identifies distinct parts (graphs, sub-figures) based on proximity
+        if rects:
+            # Low threshold (15) to keep figures separate. 
+            # The Partition Strategy will collect all parts in the zone anyway.
+            visual_objects = merge_rects(rects, threshold=15)
+        else:
+            visual_objects = []
+
+        # 2. Find captions
         captions = find_figure_captions(page)
-        caption_groups = group_by_captions(rects, captions, page.rect)
+        
+        # 3. Intelligent Association: Link captions to visual objects by "Climbing Up"
+        # We start at the caption and look for the nearest object above.
+        # If found, we continue looking above THAT object, forming a chain.
+        
+        caption_groups = []
+        used_object_ids = set()
+        
+        # Sort captions by vertical position from top to bottom
+        main_captions = [c for c in captions if c["type"] == "caption"]
+        main_captions.sort(key=lambda c: c["rect"].y0)
+
+        # Track the bottom of the previous caption to act as a "ceiling"
+        prev_caption_bottom = 0
+
+        for caption in main_captions:
+            group_rects = []
+            
+            # Define the vertical zone for this figure:
+            # Floor: Top of the current caption
+            # Ceiling: Bottom of the previous caption (or 0 for the first one)
+            floor_y = caption["rect"].y0
+            ceiling_y = prev_caption_bottom
+            
+            # Define horizontal bounds (with generous buffer)
+            # Figures can be wider than captions, so we expand significantly
+            caption_center_x = (caption["rect"].x0 + caption["rect"].x1) / 2
+            
+            for obj in visual_objects:
+                if id(obj) in used_object_ids:
+                    continue
+                
+                # Check 1: Vertical Inclusion
+                # The object must be strictly above the caption line
+                # And its center (or bottom) should be below the ceiling
+                # To be safe, we check if the object *overlaps* the vertical zone or is contained in it
+                # Logic: Object bottom must be < floor. Object top must be > ceiling.
+                if obj.y1 <= floor_y and obj.y0 >= ceiling_y:
+                    
+                    # Check 2: Horizontal Alignment
+                    # We check if the object is roughly within the same column
+                    # If the page is single column, this is always true.
+                    # If multi-column, we want to avoid grabbing figures from the other column
+                    
+                    # Simple check: Does the object overlap horizontally with the caption's extended vertical strip?
+                    # Let's define a strip 200pt wider than the caption on each side
+                    strip_x0 = caption["rect"].x0 - 200
+                    strip_x1 = caption["rect"].x1 + 200
+                    
+                    if obj.x1 >= strip_x0 and obj.x0 <= strip_x1:
+                        group_rects.append(obj)
+                        used_object_ids.add(id(obj))
+            
+            if group_rects:
+                # Calculate the union rect for the whole group
+                union = group_rects[0]
+                for r in group_rects[1:]:
+                    union = union | r
+                
+                caption_groups.append({
+                    "caption": caption["text"],
+                    "rect": union
+                })
+            
+            # Update ceiling for next caption
+            prev_caption_bottom = caption["rect"].y1
 
         valid_groups = []
-        used_rects = set()
-
-        # First, add caption-based groups
+        
+        # Add caption-based groups
         if caption_groups:
-            print(f"  Found {len(caption_groups)} caption-based figure(s)")
+            print(f"  Found {len(caption_groups)} figures via 'Climb-Up' strategy")
             for g in caption_groups:
                 valid_groups.append(g["rect"])
-                # Mark all rects used by this caption group
-                for r in g["subfigures"]:
-                    used_rects.add((r.x0, r.y0, r.x1, r.y1))
 
-        # Then, cluster remaining rects that weren't part of caption groups
-        remaining_rects = [r for r in rects
-                          if (r.x0, r.y0, r.x1, r.y1) not in used_rects]
-
-        if remaining_rects:
-            print(f"  Clustering {len(remaining_rects)} uncaptioned graphics...")
-            merged_groups = merge_rects(remaining_rects, threshold=40)
-
-            page_area = page.rect.width * page.rect.height
-            for r in merged_groups:
-                if r.width <= 5 or r.height <= 5: continue
-
-                group_area = r.width * r.height
-                if group_area > (page_area * 0.95):
-                    print(f"  Skipping group covering >95% of page.")
+        # Add remaining uncaptioned objects (that weren't linked to any caption)
+        uncaptioned_count = 0
+        for obj in visual_objects:
+            if id(obj) not in used_object_ids:
+                # Standard filtering
+                if obj.width <= 5 or obj.height <= 5: continue
+                
+                # Prevent full-page duplicates if any
+                page_area = page.rect.width * page.rect.height
+                if (obj.width * obj.height) > (page_area * 0.95):
                     continue
-
-                valid_groups.append(r)
+                    
+                valid_groups.append(obj)
+                uncaptioned_count += 1
+        
+        if uncaptioned_count > 0:
+             print(f"  Found {uncaptioned_count} uncaptioned graphics")
 
         if not valid_groups:
             print(f"  No valid vector groups found on Page {i+1}")
@@ -203,15 +272,20 @@ def extract_vectors(pdf_path, output_dir=None):
                 new_page.show_pdf_page(new_page.rect, src_doc, i, clip=rect)
 
                 # Export as high-resolution pixmap first for maximum quality
-                # Then convert to SVG - this ensures crisp rasterization
                 pix = new_page.get_pixmap(dpi=dpi)
 
-                # Save as high-quality PNG instead of SVG for better quality in Pixelmator
-                output_filename = f"Page{i+1}_Vector{j+1}.png"
-                output_path = os.path.join(output_dir, output_filename)
-
-                pix.save(output_path)
-
+                # Save as high-quality PNG
+                png_filename = f"Page{i+1}_Vector{j+1}.png"
+                png_path = os.path.join(output_dir, png_filename)
+                pix.save(png_path)
+                
+                # ALSO Save as SVG for debugging
+                svg = new_page.get_svg_image(matrix=fitz.Matrix(1, 1))
+                svg_filename = f"Page{i+1}_Vector{j+1}.svg"
+                svg_path = os.path.join(output_dir, svg_filename)
+                with open(svg_path, "w") as f:
+                    f.write(svg)
+                
                 temp_doc.close()
                 total_images += 1
 
