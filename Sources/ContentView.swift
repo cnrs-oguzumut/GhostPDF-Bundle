@@ -51,6 +51,7 @@ struct ContentView: View {
     @State private var pagesToDelete: String = ""
     @State private var splitThumbnails: [URL] = []
     @State private var splitSelectedPages: Set<Int> = []
+    @State private var splitPagesString: String = ""
     @State private var thumbnailGenerationTask: Task<Void, Never>?
     
     // Security State
@@ -283,7 +284,9 @@ struct ContentView: View {
                 pageNumberStartFrom: $pageNumberStartFrom,
                 pageNumberFormat: $pageNumberFormat,
                 reorderPageOrder: $reorderPageOrder,
+                reorderPageOrder: $reorderPageOrder,
                 splitSelectedPages: $splitSelectedPages,
+                splitPagesString: $splitPagesString,
                 splitThumbnailsCount: splitThumbnails.count
             )
             .onChange(of: selectedTool) { _ in checkAndGenerateThumbnails() }
@@ -399,7 +402,28 @@ struct ContentView: View {
             compress()
         }
     }
-    
+
+    private func parsePageString(_ string: String) -> Set<Int> {
+        var pages: Set<Int> = []
+        let parts = string.split(separator: ",")
+        for part in parts {
+            let trimmed = part.trimmingCharacters(in: .whitespaces)
+            if let single = Int(trimmed) {
+                pages.insert(single)
+            } else if trimmed.contains("-") {
+                let rangeParts = trimmed.split(separator: "-")
+                if rangeParts.count == 2,
+                   let start = Int(rangeParts[0].trimmingCharacters(in: .whitespaces)),
+                   let end = Int(rangeParts[1].trimmingCharacters(in: .whitespaces)) {
+                    for p in min(start, end)...max(start, end) {
+                        pages.insert(p)
+                    }
+                }
+            }
+        }
+        return pages
+    }
+
     private func rasterizePDF() {
         let checkedFiles = selectedFiles.filter { $0.isChecked }
         guard !checkedFiles.isEmpty else { return }
@@ -905,10 +929,17 @@ struct ContentView: View {
                             // Extract specific pages or range or all?
                             // Depends on splitMode
                             if splitMode == .extractSelected {
+                                let manualPages = parsePageString(splitPagesString)
+                                let allPages = splitSelectedPages.union(manualPages)
+                                guard !allPages.isEmpty else {
+                                     await MainActor.run { selectedFiles[index].status = .error("No pages selected") }
+                                     break
+                                }
+
                                 try await PDFCompressor.split(
                                     input: file.url,
                                     outputDir: fileFolder,
-                                    pages: Array(splitSelectedPages),
+                                    pages: Array(allPages).sorted(),
                                     password: currentPassword
                                 ) { prog in
                                      Task { @MainActor in
@@ -2398,6 +2429,7 @@ struct ToolsTabView: View {
     @Binding var pageNumberFormat: PageNumberFormat
     @Binding var reorderPageOrder: [Int]
     @Binding var splitSelectedPages: Set<Int>
+    @Binding var splitPagesString: String
     var splitThumbnailsCount: Int
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
 
@@ -2411,7 +2443,7 @@ struct ToolsTabView: View {
                 } else if selectedTool == .extractImages {
                     ExtractImagesSettingsView(imageFormat: $imageFormat, imageDPI: $imageDPI, extractMode: $extractMode)
                 } else if selectedTool == .split {
-                    SplitSettingsView(splitMode: $splitMode, splitStartPage: $splitStartPage, splitEndPage: $splitEndPage)
+                    SplitSettingsView(splitMode: $splitMode, splitStartPage: $splitStartPage, splitEndPage: $splitEndPage, splitPagesString: $splitPagesString)
                 } else if selectedTool == .rotateDelete {
                     RotateDeleteSettingsView(rotateOp: $rotateOp, rotationAngle: $rotationAngle, pagesToDelete: $pagesToDelete, selectedPages: $splitSelectedPages, totalPages: splitThumbnailsCount)
                 } else if selectedTool == .pageNumber {
@@ -2540,6 +2572,7 @@ struct SplitSettingsView: View {
     @Binding var splitMode: SplitMode
     @Binding var splitStartPage: Int
     @Binding var splitEndPage: Int
+    @Binding var splitPagesString: String
     
     var body: some View {
         GroupBox("Split Settings") {
@@ -2571,6 +2604,15 @@ struct SplitSettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Or enter page numbers manually (e.g. 1, 3-5, 8):")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Pages", text: $splitPagesString)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .padding(.top, 4)
                 } else {
                     Text("Each page will be saved as a separate PDF file.")
                         .font(.caption)
