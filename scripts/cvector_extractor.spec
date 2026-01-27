@@ -10,7 +10,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['scipy', 'tkinter', '_tkinter', 'tcl', 'tk', 'torch', 'matplotlib', 'PyQt5', 'PIL', 'numpy.distutils', 'IPython', 'jedi', 'jsonschema', 'aiohttp', 'unittest', 'pydoc', 'doctest', 'test'],
     noarchive=False,
     optimize=0,
 )

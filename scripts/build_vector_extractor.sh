@@ -31,8 +31,31 @@ cd "$SCRIPT_DIR"
 rm -rf build dist "$OUTPUT_NAME.spec"
 
 # Build
+# Exclude unnecessary packages that pull in non-public/deprecated Apple APIs
+# Apple Review rejects: scipy (_lsame_, _dcabs1_, _xerbla_array__),
+#                       tkinter/libtk (_NSWindowDidOrderOnScreenNotification)
+# The extract_vectors.py only needs: fitz (PyMuPDF), sys, os, re
 echo "Running PyInstaller with python3.10..."
-python3.10 -m PyInstaller --clean --onefile --name "$OUTPUT_NAME" extract_vectors.py
+python3.10 -m PyInstaller --clean --onefile --name "$OUTPUT_NAME" \
+    --exclude-module scipy \
+    --exclude-module tkinter \
+    --exclude-module _tkinter \
+    --exclude-module tcl \
+    --exclude-module tk \
+    --exclude-module torch \
+    --exclude-module matplotlib \
+    --exclude-module PyQt5 \
+    --exclude-module PIL \
+    --exclude-module numpy.distutils \
+    --exclude-module IPython \
+    --exclude-module jedi \
+    --exclude-module jsonschema \
+    --exclude-module aiohttp \
+    --exclude-module unittest \
+    --exclude-module pydoc \
+    --exclude-module doctest \
+    --exclude-module test \
+    extract_vectors.py
 
 # Verify
 if [ -f "dist/$OUTPUT_NAME" ]; then
@@ -40,10 +63,10 @@ if [ -f "dist/$OUTPUT_NAME" ]; then
     echo "Binary located at: $SCRIPT_DIR/dist/$OUTPUT_NAME"
     
     # Optional: Copy to convenient location for Xcode
-    # DEST="$PROJECT_ROOT/Sources/Resources/$OUTPUT_NAME"
-    # mkdir -p "$(dirname "$DEST")"
-    # cp "dist/$OUTPUT_NAME" "$DEST"
-    # echo "Copied to: $DEST"
+    DEST="$PROJECT_ROOT/Sources/Resources/$OUTPUT_NAME"
+    mkdir -p "$(dirname "$DEST")"
+    cp "dist/$OUTPUT_NAME" "$DEST"
+    echo "Copied to: $DEST"
 else
     echo "Build failed - binary not found."
     exit 1
