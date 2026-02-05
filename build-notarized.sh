@@ -5,8 +5,8 @@ set -e
 # Configuration
 APP_NAME="GhostPDF+"
 BUNDLE_ID="com.ghostpdf.app"
-VERSION="6.1.1"
-BUILD_NUMBER="1"
+VERSION="6.1.2"
+BUILD_NUMBER="2"
 TEAM_ID="UM63FN2P72"
 
 # Load secrets from .env if present
@@ -69,24 +69,45 @@ fi
 # Exclude unnecessary packages that cause Apple Review rejection
 # (scipy, tkinter, torch etc. contain non-public/deprecated Apple API symbols)
 $PYINSTALLER_CMD --clean --onefile --name cvector_extractor \
+    --strip \
     --exclude-module scipy \
+    --exclude-module numpy \
+    --exclude-module pandas \
     --exclude-module tkinter \
     --exclude-module _tkinter \
     --exclude-module tcl \
     --exclude-module tk \
     --exclude-module torch \
+    --exclude-module tensorflow \
     --exclude-module matplotlib \
     --exclude-module PyQt5 \
+    --exclude-module PyQt6 \
+    --exclude-module PySide2 \
+    --exclude-module PySide6 \
     --exclude-module PIL \
-    --exclude-module numpy.distutils \
+    --exclude-module Pillow \
     --exclude-module IPython \
     --exclude-module jedi \
     --exclude-module jsonschema \
     --exclude-module aiohttp \
+    --exclude-module asyncio \
     --exclude-module unittest \
     --exclude-module pydoc \
     --exclude-module doctest \
     --exclude-module test \
+    --exclude-module setuptools \
+    --exclude-module pkg_resources \
+    --exclude-module distutils \
+    --exclude-module sqlite3 \
+    --exclude-module xml \
+    --exclude-module xmlrpc \
+    --exclude-module email \
+    --exclude-module html \
+    --exclude-module http \
+    --exclude-module urllib3 \
+    --exclude-module certifi \
+    --exclude-module cryptography \
+    --exclude-module OpenSSL \
     scripts/extract_vectors.py --distpath scripts/dist --workpath scripts/build --specpath scripts
 
 echo "Copying Vector Extractor to app..."
@@ -212,34 +233,53 @@ codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 # Create DMG
 echo ""
 echo "Creating DMG for distribution..."
+VOL_NAME="GhostPDF_Build_$(date +%s)"
 # Detach if exists (forcefully)
-hdiutil detach "/Volumes/GhostPDF_Plus_Bundled" -force 2>/dev/null || true
-# Create DMG with unique volname
-hdiutil create -volname "GhostPDF_Plus_Bundled" -srcfolder "$APP_BUNDLE" -ov -format UDZO "dist/$APP_NAME-$VERSION.dmg"
+hdiutil detach "/Volumes/$VOL_NAME" -force 2>/dev/null || true
+# Create DMG
+if hdiutil create -volname "$VOL_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "dist/$APP_NAME-$VERSION.dmg"; then
+    echo "DMG created successfully."
+else
+    echo "Warning: DMG creation failed. Creating ZIP as fallback for notarization..."
+    cd "$BUILD_DIR"
+    zip -r "../dist/$APP_NAME-$VERSION.zip" "$APP_NAME.app"
+    cd ..
+fi
 
 echo ""
 echo "========================================="
-echo "Build Complete!"
+echo "Build Phase Complete!"
 echo "========================================="
 echo ""
 echo "App bundle: $APP_BUNDLE"
-echo "DMG file: dist/$APP_NAME-$VERSION.dmg"
+if [ -f "dist/$APP_NAME-$VERSION.dmg" ]; then
+    DIST_FILE="dist/$APP_NAME-$VERSION.dmg"
+else
+    DIST_FILE="dist/$APP_NAME-$VERSION.zip"
+fi
+echo "Distribution file: $DIST_FILE"
 echo ""
 echo "Submitting for notarization..."
 echo ""
 
-# Notarization re-enabled for 6.1.0
+# Notarization
 TEAM_ID="UM63FN2P72"
-xcrun notarytool submit "dist/$APP_NAME-$VERSION.dmg" \
+xcrun notarytool submit "$DIST_FILE" \
    --apple-id "$APPLE_ID" \
    --team-id "$TEAM_ID" \
-     --password "$APP_PASSWORD" \
+   --password "$APP_PASSWORD" \
    --wait
 
 if [ $? -eq 0 ]; then
    echo ""
-   echo "Notarization succeeded! Stapling ticket to DMG..."
-   xcrun stapler staple "dist/$APP_NAME-$VERSION.dmg"
+   echo "Notarization succeeded!"
+   if [[ "$DIST_FILE" == *.dmg ]]; then
+       echo "Stapling ticket to DMG..."
+       xcrun stapler staple "$DIST_FILE"
+   else
+       echo "ZIP notarized. You should staple the .app and recreate the zip/dmg if needed."
+       xcrun stapler staple "$APP_BUNDLE"
+   fi
    
    echo ""
    echo "========================================="

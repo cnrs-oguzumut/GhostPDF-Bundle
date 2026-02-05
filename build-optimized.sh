@@ -5,8 +5,8 @@ set -e
 # Configuration
 APP_NAME="GhostPDF+"
 BUNDLE_ID="com.ghostpdf.app"
-VERSION="6.1.1"
-BUILD_NUMBER="1"
+VERSION="6.1.2"
+BUILD_NUMBER="2"
 TEAM_ID="UM63FN2P72"
 
 # Developer ID signing identity (for notarization, NOT App Store)

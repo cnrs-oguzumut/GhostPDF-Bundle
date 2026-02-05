@@ -9,8 +9,8 @@ set -e
 # Configuration
 APP_NAME="GhostPDF+"
 BUNDLE_ID="com.nanopdf.app"
-VERSION="6.1.1"
-BUILD_NUMBER="11"
+VERSION="6.1.2"
+BUILD_NUMBER="12"
 DIST_DIR="dist"
 SCRIPTS_DIR="scripts"
 
@@ -92,24 +92,45 @@ fi
 # Exclude unnecessary packages that cause Apple Review rejection
 # (scipy, tkinter, torch etc. contain non-public/deprecated Apple API symbols)
 pyinstaller --clean --noconfirm --distpath "$SCRIPTS_DIR/build" --workpath "$SCRIPTS_DIR/build/build" --specpath "$SCRIPTS_DIR/build" --name "cvector_extractor" --onedir \
+    --strip \
     --exclude-module scipy \
+    --exclude-module numpy \
+    --exclude-module pandas \
     --exclude-module tkinter \
     --exclude-module _tkinter \
     --exclude-module tcl \
     --exclude-module tk \
     --exclude-module torch \
+    --exclude-module tensorflow \
     --exclude-module matplotlib \
     --exclude-module PyQt5 \
+    --exclude-module PyQt6 \
+    --exclude-module PySide2 \
+    --exclude-module PySide6 \
     --exclude-module PIL \
-    --exclude-module numpy.distutils \
+    --exclude-module Pillow \
     --exclude-module IPython \
     --exclude-module jedi \
     --exclude-module jsonschema \
     --exclude-module aiohttp \
+    --exclude-module asyncio \
     --exclude-module unittest \
     --exclude-module pydoc \
     --exclude-module doctest \
     --exclude-module test \
+    --exclude-module setuptools \
+    --exclude-module pkg_resources \
+    --exclude-module distutils \
+    --exclude-module sqlite3 \
+    --exclude-module xml \
+    --exclude-module xmlrpc \
+    --exclude-module email \
+    --exclude-module html \
+    --exclude-module http \
+    --exclude-module urllib3 \
+    --exclude-module certifi \
+    --exclude-module cryptography \
+    --exclude-module OpenSSL \
     "$SCRIPTS_DIR/extract_vectors.py"
 
 # Copy to Resources
