@@ -194,6 +194,8 @@ cat > "$CONTENTS_DIR/Info.plist" << EOF
             <string>PDF Document</string>
             <key>CFBundleTypeRole</key>
             <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Default</string>
             <key>LSItemContentTypes</key>
             <array>
                 <string>com.adobe.pdf</string>
