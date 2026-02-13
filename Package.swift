@@ -10,6 +10,7 @@ let package = Package(
         .executableTarget(
             name: "GhostPDF+",
             path: "Sources",
+            exclude: ["Resources"],
             swiftSettings: [
                 // Whole module optimization for better inlining and dead code elimination
                 .unsafeFlags(["-whole-module-optimization"], .when(configuration: .release)),

@@ -660,12 +660,38 @@ class PDFCompressor {
         // Check bundle first
         if let resourcePath = Bundle.main.resourcePath {
             let path = "\(resourcePath)/cvector_extractor"
-            if FileManager.default.fileExists(atPath: path) {
-                return path
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir) {
+                if isDir.boolValue {
+                    // It's a directory (onedir mode from PyInstaller), the binary is inside
+                    let binaryPath = "\(path)/cvector_extractor"
+                    if FileManager.default.fileExists(atPath: binaryPath) {
+                        return binaryPath
+                    }
+                } else {
+                    // It's a single file binary
+                    return path
+                }
             }
         }
-        // Fallback to local development path if needed (e.g. scripts/dist)
-        // For now, return nil if not found in bundle
+        
+        // Fallback to development path for local testing
+        // This is where build_vector_extractor.sh places it by default
+        let devPaths = [
+            "scripts/dist/cvector_extractor",
+            "scripts/build/cvector_extractor/cvector_extractor" // onedir mode dist
+        ]
+        
+        // Try searching relative to current working directory (dev mode)
+        let fm = FileManager.default
+        let cwd = fm.currentDirectoryPath
+        for relPath in devPaths {
+            let fullPath = "\(cwd)/\(relPath)"
+            if fm.fileExists(atPath: fullPath) {
+                return fullPath
+            }
+        }
+
         return nil
     }
 

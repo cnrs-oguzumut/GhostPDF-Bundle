@@ -10,7 +10,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['scipy', 'numpy', 'pandas', 'tkinter', '_tkinter', 'tcl', 'tk', 'torch', 'tensorflow', 'matplotlib', 'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'PIL', 'Pillow', 'IPython', 'jedi', 'jsonschema', 'aiohttp', 'asyncio', 'unittest', 'pydoc', 'doctest', 'test', 'setuptools', 'pkg_resources', 'distutils', 'sqlite3', 'xml', 'xmlrpc', 'email', 'html', 'http', 'urllib3', 'certifi', 'cryptography', 'OpenSSL'],
+    excludes=['scipy', 'tkinter', '_tkinter', 'tcl', 'tk', 'torch', 'matplotlib', 'PyQt5', 'PIL', 'numpy.distutils', 'IPython', 'jedi', 'jsonschema', 'aiohttp', 'unittest', 'pydoc', 'doctest', 'test'],
     noarchive=False,
     optimize=0,
 )
@@ -25,7 +25,7 @@ exe = EXE(
     name='cvector_extractor',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
+    strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,

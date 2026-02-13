@@ -16,3 +16,5 @@ build-lite/
 build-mas/
 build-beta/
 build-bundled/
+Sources/Resources/
+*.pkg

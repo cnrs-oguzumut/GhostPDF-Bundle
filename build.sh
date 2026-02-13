@@ -44,6 +44,20 @@ else
     exit 1
 fi
 
+# Copy Vector Extractor if available
+echo "Checking for Vector Extractor..."
+EXTRACTOR_SRC="scripts/dist/cvector_extractor"
+if [ -f "$EXTRACTOR_SRC" ]; then
+    cp "$EXTRACTOR_SRC" "$RESOURCES_DIR/"
+    echo "Vector Extractor copied to $RESOURCES_DIR"
+elif [ -f "Sources/Resources/cvector_extractor" ]; then
+    cp "Sources/Resources/cvector_extractor" "$RESOURCES_DIR/"
+    echo "Vector Extractor copied from Sources/Resources to $RESOURCES_DIR"
+else
+    echo "Warning: Vector Extractor not found. Building without it."
+    echo "To include it, run: ./scripts/build_vector_extractor.sh"
+fi
+
 # Create Info.plist
 cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
