@@ -5,16 +5,20 @@ dist/
 ghostscript-bundle/
 *.dmg
 *.zip
+*.pkg
 test_blank.pdf
 .env
-build-notarized.sh
-build-lite.sh
-build-bundled-notarized.sh
-build-sandboxed.sh
-build-mas.sh
+
+# Logs
+*.log
+
+# Build scripts
+build*.sh
+prepare-ghostscript.sh
+
+# Build directories
 build-lite/
 build-mas/
 build-beta/
 build-bundled/
 Sources/Resources/
-*.pkg
