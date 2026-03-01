@@ -2,6 +2,7 @@ import SwiftUI
 import PDFKit
 
 struct ComparisonView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     let originalURL: URL
     let compressedURL: URL
     
@@ -12,7 +13,7 @@ struct ComparisonView: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 // Header
-                Text("Original")
+                Text("Original".localized)
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -22,7 +23,7 @@ struct ComparisonView: View {
                 Divider()
                     .background(Color.gray)
                 
-                Text("Compressed")
+                Text("Compressed".localized)
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)

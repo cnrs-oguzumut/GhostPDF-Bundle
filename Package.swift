@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "GhostPDF+",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v13)
     ],
@@ -10,7 +11,7 @@ let package = Package(
         .executableTarget(
             name: "GhostPDF+",
             path: "Sources",
-            exclude: ["Resources"],
+            resources: [.process("Resources")],
             swiftSettings: [
                 // Whole module optimization for better inlining and dead code elimination
                 .unsafeFlags(["-whole-module-optimization"], .when(configuration: .release)),

@@ -333,8 +333,8 @@ enum ImageFormat: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var displayName: String {
         switch self {
-        case .jpeg: return "JPEG"
-        case .png: return "PNG"
+        case .jpeg: return "JPEG".localized
+        case .png: return "PNG".localized
         }
     }
     var extensionName: String {
@@ -354,13 +354,13 @@ enum CompressionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .fileNotFound:
-            return "Input PDF file not found"
+            return "Input PDF file not found".localized
         case .ghostscriptFailed(let msg):
-            return "Ghostscript error: \(msg)"
+            return String(format: "Ghostscript error: %@".localized, msg.localized)
         case .outputFailed:
-            return "Failed to write output file"
+            return "Failed to write output file".localized
         case .passwordRequired:
-            return "Password required to process this file"
+            return "Password required to process this file".localized
         }
     }
 }
@@ -474,7 +474,7 @@ class PDFCompressor {
         let originalSize = try FileManager.default.attributesOfItem(atPath: input.path)[.size] as? Int64 ?? 0
         
         guard let gsPath = findGhostscript() else {
-            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript to use this app.")
+            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript to use this app.".localized)
         }
 
         progressHandler(0.1)
@@ -551,7 +551,7 @@ class PDFCompressor {
     ) async throws -> CompressionResult {
         
         guard let gsPath = findGhostscript() else {
-            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.")
+            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.".localized)
         }
         
         let originalSize = try FileManager.default.attributesOfItem(atPath: input.path)[.size] as? Int64 ?? 0
@@ -630,7 +630,7 @@ class PDFCompressor {
     ) async throws {
         
         guard let gsPath = findGhostscript() else {
-            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.")
+            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.".localized)
         }
         
         progressHandler(0.1)
@@ -702,7 +702,7 @@ class PDFCompressor {
     ) async throws {
         
         guard let extractorPath = findVectorExtractor() else {
-            throw CompressionError.ghostscriptFailed("Vector extractor binary not found. Please ensure 'cvector_extractor' is in the app bundle.")
+            throw CompressionError.ghostscriptFailed("Vector extractor binary not found. Please ensure 'cvector_extractor' is in the app bundle.".localized)
         }
         
         progressHandler(0.1)
@@ -731,7 +731,7 @@ class PDFCompressor {
         if task.terminationStatus != 0 {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw CompressionError.ghostscriptFailed("Vector extraction failed: \(msg)")
+            throw CompressionError.ghostscriptFailed(String(format: "Vector extraction failed: %@".localized, msg.localized))
         }
     }
     
@@ -741,7 +741,7 @@ class PDFCompressor {
     
     static func merge(inputs: [URL], output: URL, progressHandler: @escaping (Double) -> Void) async throws {
         guard let gsPath = findGhostscript() else {
-            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.")
+            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.".localized)
         }
         
         progressHandler(0.1)
@@ -767,7 +767,7 @@ class PDFCompressor {
     
     static func split(input: URL, outputDir: URL, startPage: Int? = nil, endPage: Int? = nil, pages: [Int]? = nil, password: String? = nil, progressHandler: @escaping (Double) -> Void) async throws {
         guard let gsPath = findGhostscript() else {
-            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.")
+            throw CompressionError.ghostscriptFailed("Ghostscript not found. Please install Ghostscript.".localized)
         }
         
         progressHandler(0.1)

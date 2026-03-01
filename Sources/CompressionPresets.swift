@@ -9,17 +9,17 @@ enum CompressionPreset: String, CaseIterable, Identifiable {
     
     var name: String {
         switch self {
-        case .light: return "Light"
-        case .medium: return "Medium"
-        case .heavy: return "Heavy"
+        case .light: return "Light".localized
+        case .medium: return "Medium".localized
+        case .heavy: return "Heavy".localized
         }
     }
     
     var description: String {
         switch self {
-        case .light: return "Minimal compression, preserves quality (300 DPI)"
-        case .medium: return "Balanced compression for sharing (150 DPI)"
-        case .heavy: return "Maximum compression, smaller files (72 DPI)"
+        case .light: return "Minimal compression, preserves quality (300 DPI)".localized
+        case .medium: return "Balanced compression for sharing (150 DPI)".localized
+        case .heavy: return "Maximum compression, smaller files (72 DPI)".localized
         }
     }
     
@@ -63,11 +63,11 @@ enum ProPreset: String, CaseIterable, Identifiable {
     
     var name: String {
         switch self {
-        case .web: return "Web"
-        case .email: return "Email"
-        case .print: return "Print"
-        case .archive: return "Archive"
-        case .grayscale: return "Grayscale"
+        case .web: return "Web".localized
+        case .email: return "Email".localized
+        case .print: return "Print".localized
+        case .archive: return "Archive".localized
+        case .grayscale: return "Grayscale".localized
         }
     }
     
@@ -83,11 +83,11 @@ enum ProPreset: String, CaseIterable, Identifiable {
     
     var description: String {
         switch self {
-        case .web: return "Optimized for web viewing"
-        case .email: return "Small files for email"
-        case .print: return "High quality for printing"
-        case .archive: return "PDF/A compatible archival"
-        case .grayscale: return "Convert to grayscale"
+        case .web: return "Optimized for web viewing".localized
+        case .email: return "Small files for email".localized
+        case .print: return "High quality for printing".localized
+        case .archive: return "PDF/A compatible archival".localized
+        case .grayscale: return "Convert to grayscale".localized
         }
     }
     
@@ -143,11 +143,11 @@ enum ColorStrategy: String, CaseIterable, Identifiable {
     
     var displayName: String {
         switch self {
-        case .unchanged: return "Leave Unchanged"
-        case .rgb: return "RGB"
-        case .cmyk: return "CMYK"
-        case .gray: return "Grayscale"
-        case .deviceIndependent: return "Device Independent"
+        case .unchanged: return "Leave Unchanged".localized
+        case .rgb: return "RGB".localized
+        case .cmyk: return "CMYK".localized
+        case .gray: return "Grayscale".localized
+        case .deviceIndependent: return "Device Independent".localized
         }
     }
 }
@@ -161,9 +161,9 @@ enum ImageFilter: String, CaseIterable, Identifiable {
     
     var displayName: String {
         switch self {
-        case .auto: return "Auto (Recommended)"
-        case .dct: return "DCTEncode (JPEG)"
-        case .flate: return "FlateEncode (Lossless)"
+        case .auto: return "Auto (Recommended)".localized
+        case .dct: return "DCTEncode (JPEG)".localized
+        case .flate: return "FlateEncode (Lossless)".localized
         }
     }
 }
@@ -179,11 +179,11 @@ enum CompatLevel: String, CaseIterable, Identifiable {
     
     var displayName: String {
         switch self {
-        case .v1_4: return "1.4 (Acrobat 5)"
-        case .v1_5: return "1.5 (Acrobat 6)"
-        case .v1_6: return "1.6 (Acrobat 7)"
-        case .v1_7: return "1.7 (Acrobat 8+)"
-        case .v2_0: return "2.0 (PDF 2.0)"
+        case .v1_4: return "1.4 (Acrobat 5)".localized
+        case .v1_5: return "1.5 (Acrobat 6)".localized
+        case .v1_6: return "1.6 (Acrobat 7)".localized
+        case .v1_7: return "1.7 (Acrobat 8+)".localized
+        case .v2_0: return "2.0 (PDF 2.0)".localized
         }
     }
 }

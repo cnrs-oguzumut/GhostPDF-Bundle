@@ -4,6 +4,7 @@ import AppKit
 import PDFKit
 
 struct MergeThumbnailView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var files: [ContentView.PDFFile]
     @State private var draggingItem: ContentView.PDFFile?
     
@@ -76,6 +77,7 @@ struct DragRelocateDelegate: DropDelegate {
 }
 
 struct SplitThumbnailView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     let thumbnails: [URL]
     @Binding var selectedPages: Set<Int> // 1-based index
     let multiSelect: Bool
@@ -99,7 +101,7 @@ struct SplitThumbnailView: View {
                                         .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 3)
                                 )
                         }
-                        Text("Page \(pageNum)")
+                        Text(String(format: "Page %lld".localized, pageNum))
                             .font(.caption)
                     }
                     .opacity(isSelected ? 1.0 : 0.8)
@@ -134,6 +136,7 @@ struct ReorderablePage: Identifiable, Equatable {
 }
 
 struct ReorderThumbnailView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     let pdfURL: URL
     @Binding var pageOrder: [Int]
     @State private var pdfDocument: PDFDocument?
@@ -145,7 +148,7 @@ struct ReorderThumbnailView: View {
             if pages.isEmpty {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("Loading PDF...")
+                    Text("Loading PDF...".localized)
                         .foregroundColor(.gray)
                 }
                 .frame(maxWidth: .infinity, minHeight: 200)
@@ -178,7 +181,7 @@ struct ReorderThumbnailView: View {
                         .stroke(isDragging ? Color.blue : Color.gray.opacity(0.5), lineWidth: isDragging ? 3 : 1)
                 )
             
-            Text("Page \(page.originalIndex)")
+            Text(String(format: "Page %lld".localized, page.originalIndex))
                 .font(.caption)
                 .fontWeight(.medium)
         }

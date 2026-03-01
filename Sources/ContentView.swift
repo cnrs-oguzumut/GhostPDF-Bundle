@@ -1,18 +1,29 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+
+
 enum ExtractMode: String, CaseIterable, Identifiable {
     case renderPage = "Render Page as Image"
     case extractEmbedded = "Extract Embedded Images"
     case extractVectors = "Extract Vector Drawings"
     
     var id: String { rawValue }
+    
+    var name: String {
+        switch self {
+        case .renderPage: return "Render Page as Image".localized
+        case .extractEmbedded: return "Extract Embedded Images".localized
+        case .extractVectors: return "Extract Vector Drawings".localized
+        }
+    }
 }
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedFiles: [PDFFile] = []
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
+    @AppStorage("app_language") private var appLanguage = "en"
     @State private var selectedTab = 0
     @State private var selectedPreset: CompressionPreset = .medium
     @State private var proSettings = ProSettings()
@@ -115,20 +126,31 @@ struct ContentView: View {
             VStack(spacing: 16) {
                 HStack {
                     Spacer()
-                    Button(action: { isDarkMode.toggle() }) {
-                        Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(isDarkMode ? .yellow : .indigo)
-                            .frame(width: 32, height: 32)
-                            .background(isDarkMode ? Color.white.opacity(0.1) : Color.white)
-                            .clipShape(Circle())
-                            .shadow(radius: isDarkMode ? 0 : 2)
+                    HStack(spacing: 12) {
+                        Picker("", selection: $appLanguage) {
+                            Text("EN").tag("en")
+                            Text("FR").tag("fr")
+                            Text("TR").tag("tr")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 80)
+                        .scaleEffect(0.8)
+
+                        Button(action: { isDarkMode.toggle() }) {
+                            Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(isDarkMode ? .yellow : .indigo)
+                                .frame(width: 28, height: 28)
+                                .background(isDarkMode ? Color.white.opacity(0.1) : Color.white)
+                                .clipShape(Circle())
+                                .shadow(radius: isDarkMode ? 0 : 2)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                     .padding(.trailing, 24)
                     .padding(.top, 16)
                 }
-                .frame(height: 0) // Pull up into ZStack alignment if needed, or just let it stack
+                .frame(height: 0)
                 .zIndex(10)
 
                 Text("GhostPDF+")
@@ -142,12 +164,12 @@ struct ContentView: View {
                 
                 fileListArea
 
-                Picker("Mode", selection: $selectedTab) {
-                    Text("Basic").tag(0)
-                    Text("Pro").tag(1)
-                    Text("Tools").tag(2)
-                    Text("Security").tag(3)
-                    Text("Advanced").tag(4)
+                Picker("Mode".localized, selection: $selectedTab) {
+                    Text("Basic".localized).tag(0)
+                    Text("Pro".localized).tag(1)
+                    Text("Tools".localized).tag(2)
+                    Text("Security".localized).tag(3)
+                    Text("Advanced".localized).tag(4)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 24)
@@ -174,7 +196,7 @@ struct ContentView: View {
                     VStack {
                         ProgressView(value: totalProgress)
                             .progressViewStyle(.linear)
-                        Text("Processing file \(currentFileIndex + 1) of \(selectedFiles.count)")
+                        Text(String(format: "Processing file %lld of %lld".localized, currentFileIndex + 1, selectedFiles.count))
                             .font(.caption)
                             .foregroundColor(.gray)
                     }
@@ -217,27 +239,27 @@ struct ContentView: View {
                     .frame(minWidth: 800, minHeight: 600)
             }
         }
-        .alert(selectedTab == 4 ? "Operation Complete" : "Batch Complete", isPresented: $showingResult) {
-            Button("Reveal in Finder") {
+        .alert(selectedTab == 4 ? "Operation Complete".localized : "Batch Complete".localized, isPresented: $showingResult) {
+            Button("Reveal in Finder".localized) {
                 if let first = lastResults.first {
                     PDFCompressor.revealInFinder(first.outputPath)
                 }
             }
-            Button("OK", role: .cancel) {}
+            Button("OK".localized, role: .cancel) {}
         } message: {
             if selectedTab == 4 {
-                let action = advancedMode == .repair ? "repaired" : "converted"
-                Text("Successfully \(action) \(lastResults.count) files.")
+                let action = advancedMode == .repair ? "repaired".localized : "converted".localized
+                Text(String(format: "Successfully %@ %lld files.".localized, action, lastResults.count))
             } else {
                 let totalSaved = lastResults.reduce(0) { $0 + ($1.originalSize - $1.compressedSize) }
                 let totalMB = Double(totalSaved) / (1024 * 1024)
-                Text("Processed \(lastResults.count) files.\nTotal space saved: \(String(format: "%.2f", totalMB)) MB")
+                Text(String(format: "Processed %lld files.\nTotal space saved: %.2f MB".localized, lastResults.count, totalMB))
             }
         }
-        .alert("Pro Mode Requires Ghostscript", isPresented: $showingProModeRequirementAlert) {
-            Button("OK", role: .cancel) {}
+        .alert("Pro Mode Requires Ghostscript".localized, isPresented: $showingProModeRequirementAlert) {
+            Button("OK".localized, role: .cancel) {}
         } message: {
-            Text("Pro Mode requires Ghostscript to be installed. Install it using Homebrew:\n\nbrew install ghostscript")
+            Text("Pro Mode requires Ghostscript to be installed. Install it using Homebrew:\n\nbrew install ghostscript".localized)
         }
         .onAppear {
             if !appState.ghostscriptAvailable {
@@ -251,10 +273,10 @@ struct ContentView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 40))
                 .foregroundColor(.orange)
-            Text("This Feature Requires Ghostscript")
+            Text("This Feature Requires Ghostscript".localized)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.primary)
-            Text("Install Ghostscript to use this feature.\n\nbrew install ghostscript")
+            Text("Install Ghostscript to use this feature.\n\nbrew install ghostscript".localized)
                 .font(.system(size: 13))
                 .foregroundColor(Color(red: 148/255, green: 163/255, blue: 184/255))
                 .multilineTextAlignment(.center)
@@ -328,39 +350,39 @@ struct ContentView: View {
     var actionButtonTitle: String {
         if selectedTab == 3 {
             switch securityMode {
-            case .watermark: return "Add Watermark"
-            case .encrypt: return "Encrypt PDF"
-            case .decrypt: return "Decrypt PDF"
+            case .watermark: return "Add Watermark".localized
+            case .encrypt: return "Encrypt PDF".localized
+            case .decrypt: return "Decrypt PDF".localized
             }
         }
         if selectedTab == 2 {
             if selectedFiles.count > 1 {
                 switch selectedTool {
-                case .merge: return "Merge Files"
-                case .split: return "Split Files"
-                case .rotateDelete: return rotateOp == .rotate ? "Rotate Files" : "Delete Pages"
-                case .rasterize: return "Rasterize Files"
-                case .extractImages: return "Extract All Images"
-                case .pageNumber: return "Add Page Numbers"
-                case .reorder: return "Reorder Pages"
-                case .resizeA4: return "Resize All to A4"
+                case .merge: return "Merge Files".localized
+                case .split: return "Split Files".localized
+                case .rotateDelete: return rotateOp == .rotate ? "Rotate Files".localized : "Delete Pages".localized
+                case .rasterize: return "Rasterize Files".localized
+                case .extractImages: return "Extract All Images".localized
+                case .pageNumber: return "Add Page Numbers".localized
+                case .reorder: return "Reorder Pages".localized
+                case .resizeA4: return "Resize All to A4".localized
                 }
             }
             switch selectedTool {
-            case .merge: return "Merge PDF"
-            case .split: return "Split PDF"
-            case .rotateDelete: return rotateOp == .rotate ? "Rotate PDF" : "Delete Pages"
-            case .rasterize: return "Rasterize PDF"
-            case .extractImages: return "Extract Images"
-            case .pageNumber: return "Add Page Numbers"
-            case .reorder: return "Reorder Pages"
-            case .resizeA4: return "Resize to A4"
+            case .merge: return "Merge PDF".localized
+            case .split: return "Split PDF".localized
+            case .rotateDelete: return rotateOp == .rotate ? "Rotate PDF".localized : "Delete Pages".localized
+            case .rasterize: return "Rasterize PDF".localized
+            case .extractImages: return "Extract Images".localized
+            case .pageNumber: return "Add Page Numbers".localized
+            case .reorder: return "Reorder Pages".localized
+            case .resizeA4: return "Resize to A4".localized
             }
         }
         if selectedTab == 4 {
-            return advancedMode == .repair ? "Repair PDF" : "Convert to PDF/A"
+            return advancedMode == .repair ? "Repair PDF".localized : "Convert to PDF/A".localized
         }
-        return selectedFiles.count > 1 ? "Compress Files" : "Compress PDF"
+        return selectedFiles.count > 1 ? "Compress Files".localized : "Compress PDF".localized
     }
     
 
@@ -1809,7 +1831,7 @@ struct ContentView: View {
                 }
                 
                 HStack {
-                     Button("Clear All") {
+                     Button("Clear All".localized) {
                         selectedFiles.removeAll()
                         lastResults.removeAll()
                         statusMessage = ""
@@ -1853,6 +1875,7 @@ struct ContentView: View {
 
 
 struct FileListView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var files: [ContentView.PDFFile]
     let onDelete: (IndexSet) -> Void
     let onCompare: (ContentView.PDFFile) -> Void
@@ -1891,13 +1914,14 @@ struct FileListView: View {
 }
 
 struct WarningBanner: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundColor(.yellow)
-            Text("Ghostscript not found. Using Apple compression (less effective).")
+            Text("Ghostscript not found. Using Apple compression (less effective).".localized)
                 .font(.system(size: 12))
                 .foregroundColor(isDarkMode ? .white.opacity(0.9) : .black.opacity(0.8))
         }
@@ -1910,6 +1934,7 @@ struct WarningBanner: View {
 }
 
 struct DropZoneView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var selectedFiles: [ContentView.PDFFile]
     @State private var isTargeted = false
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
@@ -1920,7 +1945,7 @@ struct DropZoneView: View {
                 .font(.system(size: 48))
                 .foregroundColor(isDarkMode ? Color(red: 148/255, green: 163/255, blue: 184/255) : Color(red: 100/255, green: 116/255, blue: 139/255))
             
-            Text("Drop PDFs here\nor click to browse")
+            Text("Drop PDFs here\nor click to browse".localized)
                 .font(.system(size: 14))
                 .foregroundColor(isDarkMode ? Color(red: 148/255, green: 163/255, blue: 184/255) : Color(red: 100/255, green: 116/255, blue: 139/255))
                 .multilineTextAlignment(.center)
@@ -1971,11 +1996,12 @@ struct DropZoneView: View {
 }
 
 struct BasicTabView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var selectedPreset: CompressionPreset
     
     var body: some View {
         VStack(spacing: 12) {
-            Text("Choose Compression Level")
+            Text("Choose Compression Level".localized)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.primary)
             
@@ -1990,6 +2016,7 @@ struct BasicTabView: View {
 }
 
 struct BasicPresetButton: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     let preset: CompressionPreset
     @Binding var selectedPreset: CompressionPreset
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
@@ -2033,6 +2060,7 @@ struct BasicPresetButton: View {
 }
 
 struct ProTabView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var settings: ProSettings
     @Binding var selectedPreset: ProPreset
     
@@ -2047,7 +2075,7 @@ struct ProTabView: View {
                 ProAdvancedSettingsView(settings: $settings)
                 ProCustomArgsView(settings: $settings)
                 
-                Button("Reset to Defaults") {
+                Button("Reset to Defaults".localized) {
                     selectedPreset = .email
                     settings = ProPreset.email.toSettings()
                 }
@@ -2059,12 +2087,13 @@ struct ProTabView: View {
 }
 
 struct ProPresetsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var selectedPreset: ProPreset
     @Binding var settings: ProSettings
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
     
     var body: some View {
-        GroupBox("Quick Presets") {
+        GroupBox("Quick Presets".localized) {
             HStack(spacing: 8) {
                 ForEach(ProPreset.allCases) { preset in
                     Button(action: {
@@ -2095,10 +2124,11 @@ struct ProPresetsView: View {
 }
 
 struct ProImageSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var settings: ProSettings
     
     var body: some View {
-        GroupBox("Image Settings") {
+        GroupBox("Image Settings".localized) {
             VStack(spacing: 12) {
                 SliderRow(label: "Color DPI", value: $settings.colorDPI, range: 36...600, suffix: " dpi")
                 SliderRow(label: "Gray DPI", value: $settings.grayDPI, range: 36...600, suffix: " dpi")
@@ -2106,7 +2136,7 @@ struct ProImageSettingsView: View {
                 SliderRow(label: "JPEG Quality", value: $settings.jpegQuality, range: 10...100, suffix: "%")
                 
                 HStack {
-                    Text("Compression")
+                    Text("Compression".localized)
                         .frame(width: 100, alignment: .leading)
                     Picker("", selection: $settings.imageFilter) {
                         ForEach(ImageFilter.allCases) { filter in
@@ -2121,13 +2151,14 @@ struct ProImageSettingsView: View {
 }
 
 struct ProColorSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var settings: ProSettings
     
     var body: some View {
-        GroupBox("Color Settings") {
+        GroupBox("Color Settings".localized) {
             VStack(spacing: 12) {
                 HStack {
-                    Text("Color Mode")
+                    Text("Color Mode".localized)
                         .frame(width: 100, alignment: .leading)
                     Picker("", selection: $settings.colorStrategy) {
                         ForEach(ColorStrategy.allCases) { strategy in
@@ -2137,34 +2168,36 @@ struct ProColorSettingsView: View {
                     .labelsHidden()
                 }
                 
-                Toggle("Preserve overprint settings", isOn: $settings.preserveOverprint)
+                Toggle("Preserve overprint settings".localized, isOn: $settings.preserveOverprint)
             }
         }
     }
 }
 
 struct ProFontSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var settings: ProSettings
     
     var body: some View {
-        GroupBox("Font Settings") {
+        GroupBox("Font Settings".localized) {
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Embed all fonts", isOn: $settings.embedFonts)
-                Toggle("Subset fonts (only used characters)", isOn: $settings.subsetFonts)
-                Toggle("Compress fonts", isOn: $settings.compressFonts)
+                Toggle("Embed all fonts".localized, isOn: $settings.embedFonts)
+                Toggle("Subset fonts (only used characters)".localized, isOn: $settings.subsetFonts)
+                Toggle("Compress fonts".localized, isOn: $settings.compressFonts)
             }
         }
     }
 }
 
 struct ProPDFSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var settings: ProSettings
     
     var body: some View {
-        GroupBox("PDF Settings") {
+        GroupBox("PDF Settings".localized) {
             VStack(spacing: 12) {
                 HStack {
-                    Text("Compatibility")
+                    Text("Compatibility".localized)
                         .frame(width: 100, alignment: .leading)
                     Picker("", selection: $settings.compatLevel) {
                         ForEach(CompatLevel.allCases) { level in
@@ -2174,31 +2207,33 @@ struct ProPDFSettingsView: View {
                     .labelsHidden()
                 }
                 
-                Toggle("Optimize for fast web view", isOn: $settings.fastWebView)
+                Toggle("Optimize for fast web view".localized, isOn: $settings.fastWebView)
             }
         }
     }
 }
 
 struct ProAdvancedSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var settings: ProSettings
     
     var body: some View {
-        GroupBox("Advanced Options") {
+        GroupBox("Advanced Options".localized) {
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("Detect duplicate images", isOn: $settings.detectDuplicates)
-                Toggle("Remove document metadata", isOn: $settings.removeMetadata)
-                Toggle("Use ASCII85 encoding", isOn: $settings.ascii85)
+                Toggle("Detect duplicate images".localized, isOn: $settings.detectDuplicates)
+                Toggle("Remove document metadata".localized, isOn: $settings.removeMetadata)
+                Toggle("Use ASCII85 encoding".localized, isOn: $settings.ascii85)
             }
         }
     }
 }
 
 struct ProCustomArgsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var settings: ProSettings
     
     var body: some View {
-        GroupBox("Custom Arguments") {
+        GroupBox("Custom Arguments".localized) {
             TextField("Additional gs arguments", text: $settings.customArgs)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
@@ -2207,6 +2242,7 @@ struct ProCustomArgsView: View {
 }
 
 struct SliderRow: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     let label: String
     @Binding var value: Int
     let range: ClosedRange<Int>
@@ -2262,9 +2298,9 @@ enum SplitMode: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var description: String {
         switch self {
-        case .splitAll: return "Split into single pages"
-        case .extractRange: return "Extract page range"
-        case .extractSelected: return "Extract selected pages"
+        case .splitAll: return "Split into single pages".localized
+        case .extractRange: return "Extract page range".localized
+        case .extractSelected: return "Extract selected pages".localized
         }
     }
 }
@@ -2276,8 +2312,8 @@ enum RotateOperation: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var description: String {
         switch self {
-        case .rotate: return "Rotate Pages"
-        case .delete: return "Delete Pages"
+        case .rotate: return "Rotate Pages".localized
+        case .delete: return "Delete Pages".localized
         }
     }
 }
@@ -2296,14 +2332,14 @@ enum ToolMode: String, CaseIterable, Identifiable {
 
     var name: String {
         switch self {
-        case .rasterize: return "Rasterize"
-        case .extractImages: return "Extract Imgs"
-        case .merge: return "Merge PDF"
-        case .split: return "Split PDF"
-        case .rotateDelete: return "Rotate/Delete"
-        case .pageNumber: return "Page Numbers"
-        case .reorder: return "Reorder"
-        case .resizeA4: return "Resize to A4"
+        case .rasterize: return "Rasterize".localized
+        case .extractImages: return "Extract Imgs".localized
+        case .merge: return "Merge PDF".localized
+        case .split: return "Split PDF".localized
+        case .rotateDelete: return "Rotate/Delete".localized
+        case .pageNumber: return "Page Numbers".localized
+        case .reorder: return "Reorder".localized
+        case .resizeA4: return "Resize to A4".localized
         }
     }
 
@@ -2321,14 +2357,14 @@ enum ToolMode: String, CaseIterable, Identifiable {
     }
     var description: String {
         switch self {
-        case .rasterize: return "Convert pages to bitmaps to prevent editing/copying."
-        case .extractImages: return "Save each page as a high-quality image file."
-        case .pageNumber: return "Add page numbers to your PDF documents."
-        case .merge: return "Combine multiple PDF files into a single document."
-        case .split: return "Split PDF into multiple files or extract specific pages."
-        case .rotateDelete: return "Rotate pages or delete specific pages."
-        case .reorder: return "Reorder pages via drag-and-drop."
-        case .resizeA4: return "Scale all pages to standard A4 size (210x297mm)."
+        case .rasterize: return "Convert pages to bitmaps to prevent editing/copying.".localized
+        case .extractImages: return "Save each page as a high-quality image file.".localized
+        case .pageNumber: return "Add page numbers to your PDF documents.".localized
+        case .merge: return "Combine multiple PDF files into a single document.".localized
+        case .split: return "Split PDF into multiple files or extract specific pages.".localized
+        case .rotateDelete: return "Rotate pages or delete specific pages.".localized
+        case .reorder: return "Reorder pages via drag-and-drop.".localized
+        case .resizeA4: return "Scale all pages to standard A4 size (210x297mm).".localized
         }
     }
 }
@@ -2341,9 +2377,9 @@ enum SecurityMode: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var description: String {
         switch self {
-        case .watermark: return "Add Watermark"
-        case .encrypt: return "Encrypt PDF"
-        case .decrypt: return "Decrypt PDF"
+        case .watermark: return "Add Watermark".localized
+        case .encrypt: return "Encrypt PDF".localized
+        case .decrypt: return "Decrypt PDF".localized
         }
     }
 }
@@ -2355,12 +2391,12 @@ enum PageNumberPosition: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var description: String {
         switch self {
-        case .topLeft: return "Top Left"
-        case .topCenter: return "Top Center"
-        case .topRight: return "Top Right"
-        case .bottomLeft: return "Bottom Left"
-        case .bottomCenter: return "Bottom Center"
-        case .bottomRight: return "Bottom Right"
+        case .topLeft: return "Top Left".localized
+        case .topCenter: return "Top Center".localized
+        case .topRight: return "Top Right".localized
+        case .bottomLeft: return "Bottom Left".localized
+        case .bottomCenter: return "Bottom Center".localized
+        case .bottomRight: return "Bottom Right".localized
         }
     }
 }
@@ -2373,14 +2409,15 @@ enum PageNumberFormat: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var description: String {
         switch self {
-        case .numbers: return "1, 2, 3..."
-        case .numbersWithTotal: return "1/10, 2/10..."
-        case .pageN: return "Page 1, Page 2..."
+        case .numbers: return "1, 2, 3...".localized
+        case .numbersWithTotal: return "1/10, 2/10...".localized
+        case .pageN: return "Page 1, Page 2...".localized
         }
     }
 }
 
 struct ToolsTabView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var selectedTool: ToolMode
     @Binding var rasterDPI: Int
     @Binding var imageFormat: ImageFormat
@@ -2433,11 +2470,12 @@ struct ToolsTabView: View {
 }
 
 struct ToolSelectionView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var selectedTool: ToolMode
     @AppStorage("isDarkMode_v2") private var isDarkMode = true
     
     var body: some View {
-        GroupBox("Select Tool") {
+        GroupBox("Select Tool".localized) {
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible()),
@@ -2472,12 +2510,13 @@ struct ToolSelectionView: View {
 }
 
 struct RasterizeSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var rasterDPI: Int
     
     var body: some View {
-        GroupBox("Rasterization Settings") {
+        GroupBox("Rasterization Settings".localized) {
             VStack(spacing: 12) {
-                Text("This will flatten the PDF into images, making text unselectable and vector graphics uneditable.")
+                Text("This will flatten the PDF into images, making text unselectable and vector graphics uneditable.".localized)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2491,16 +2530,17 @@ struct RasterizeSettingsView: View {
 }
 
 struct ExtractImagesSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var imageFormat: ImageFormat
     @Binding var imageDPI: Int
     @Binding var extractMode: ExtractMode
     
     var body: some View {
-        GroupBox("Extraction Settings") {
+        GroupBox("Extraction Settings".localized) {
             VStack(spacing: 12) {
-                Picker("Mode", selection: $extractMode) {
+                Picker("Mode".localized, selection: $extractMode) {
                     ForEach(ExtractMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(mode.name).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -2508,7 +2548,7 @@ struct ExtractImagesSettingsView: View {
                 
                 if extractMode == .renderPage {
                     HStack {
-                        Text("Format")
+                        Text("Format".localized)
                             .frame(width: 100, alignment: .leading)
                         Picker("", selection: $imageFormat) {
                             ForEach(ImageFormat.allCases) { format in
@@ -2521,12 +2561,12 @@ struct ExtractImagesSettingsView: View {
                     
                     SliderRow(label: "Resolution", value: $imageDPI, range: 72...600, suffix: " dpi")
                 } else if extractMode == .extractVectors {
-                     Text("Extracts vector drawings as SVG files using a bundled Python tool. Requires the external binary.")
+                     Text("Extracts vector drawings as SVG files using a bundled Python tool. Requires the external binary.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Text("Extracts embedded images from the PDF (supports JPEG, PNG & CMYK). CMYK images are converted to RGB PNGs.")
+                    Text("Extracts embedded images from the PDF (supports JPEG, PNG & CMYK). CMYK images are converted to RGB PNGs.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2537,14 +2577,15 @@ struct ExtractImagesSettingsView: View {
 }
 
 struct SplitSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var splitMode: SplitMode
     @Binding var splitStartPage: Int
     @Binding var splitEndPage: Int
     
     var body: some View {
-        GroupBox("Split Settings") {
+        GroupBox("Split Settings".localized) {
             VStack(spacing: 12) {
-                Picker("Mode", selection: $splitMode) {
+                Picker("Mode".localized, selection: $splitMode) {
                     ForEach(SplitMode.allCases) { mode in
                         Text(mode.description).tag(mode)
                     }
@@ -2554,25 +2595,25 @@ struct SplitSettingsView: View {
                 
                 if splitMode == .extractRange {
                     HStack {
-                        Text("Page Range:")
+                        Text("Page Range:".localized)
                             .font(.caption)
                             .foregroundColor(.secondary)
                         Spacer()
                         TextField("Start", value: $splitStartPage, formatter: NumberFormatter())
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 50)
-                        Text("to")
+                        Text("to".localized)
                         TextField("End", value: $splitEndPage, formatter: NumberFormatter())
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 50)
                     }
                 } else if splitMode == .extractSelected {
-                    Text("Select pages to extract from the thumbnail view above.")
+                    Text("Select pages to extract from the thumbnail view above.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Text("Each page will be saved as a separate PDF file.")
+                    Text("Each page will be saved as a separate PDF file.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2583,6 +2624,7 @@ struct SplitSettingsView: View {
 }
 
 struct FileRowView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var file: ContentView.PDFFile
     let onCompare: (ContentView.PDFFile) -> Void
     
@@ -2609,7 +2651,7 @@ struct FileRowView: View {
             
             switch file.status {
             case .pending:
-                Text("Pending")
+                Text("Pending".localized)
                     .font(.caption)
                     .foregroundColor(.secondary)
             case .compressing(let progress):
@@ -2625,7 +2667,7 @@ struct FileRowView: View {
                                 .font(.system(size: 16))
                         }
                         .buttonStyle(.plain)
-                        .help("Compare Original vs Compressed")
+                        .help("Compare Original vs Compressed".localized)
                     }
                     
                     VStack(alignment: .trailing) {
@@ -2645,11 +2687,11 @@ struct FileRowView: View {
             }
         }
         .contextMenu {
-            Button("Reveal in Finder") {
+            Button("Reveal in Finder".localized) {
                 PDFCompressor.revealInFinder(file.url)
             }
             if let output = file.outputURL {
-                Button("Reveal Output in Finder") {
+                Button("Reveal Output in Finder".localized) {
                     PDFCompressor.revealInFinder(output)
                 }
             }
@@ -2662,6 +2704,7 @@ struct FileRowView: View {
 }
 
 struct RotateDeleteSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var rotateOp: RotateOperation
     @Binding var rotationAngle: Int
     @Binding var pagesToDelete: String
@@ -2669,9 +2712,9 @@ struct RotateDeleteSettingsView: View {
     var totalPages: Int
     
     var body: some View {
-        GroupBox("Rotate / Delete Settings") {
+        GroupBox("Rotate / Delete Settings".localized) {
             VStack(spacing: 12) {
-                Picker("Operation", selection: $rotateOp) {
+                Picker("Operation".localized, selection: $rotateOp) {
                     ForEach(RotateOperation.allCases) { op in
                         Text(op.description).tag(op)
                     }
@@ -2680,14 +2723,14 @@ struct RotateDeleteSettingsView: View {
                 .labelsHidden()
                 
                 if rotateOp == .rotate {
-                    Text("Select pages to rotate from the thumbnail view above.")
+                    Text("Select pages to rotate from the thumbnail view above.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     
                     HStack {
                         Button(action: { rotationAngle = (rotationAngle - 90 + 360) % 360 }) {
-                            Label("Left", systemImage: "rotate.left")
+                            Label("Left".localized, systemImage: "rotate.left")
                         }
                         .buttonStyle(.bordered)
                         
@@ -2700,7 +2743,7 @@ struct RotateDeleteSettingsView: View {
                         Spacer()
                         
                         Button(action: { rotationAngle = (rotationAngle + 90) % 360 }) {
-                                Label("Right", systemImage: "rotate.right")
+                                Label("Right".localized, systemImage: "rotate.right")
                         }
                         .buttonStyle(.bordered)
                     }
@@ -2708,22 +2751,22 @@ struct RotateDeleteSettingsView: View {
                     // Quick select for rotate
                     if totalPages > 0 {
                         HStack(spacing: 8) {
-                            Button("Select Odd") {
+                            Button("Select Odd".localized) {
                                 selectedPages = Set((1...totalPages).filter { $0 % 2 == 1 })
                             }
                             .buttonStyle(.bordered)
                             
-                            Button("Select Even") {
+                            Button("Select Even".localized) {
                                 selectedPages = Set((1...totalPages).filter { $0 % 2 == 0 })
                             }
                             .buttonStyle(.bordered)
                             
-                            Button("Select All") {
+                            Button("Select All".localized) {
                                 selectedPages = Set(1...totalPages)
                             }
                             .buttonStyle(.bordered)
                             
-                            Button("Clear") {
+                            Button("Clear".localized) {
                                 selectedPages = []
                             }
                             .buttonStyle(.bordered)
@@ -2731,7 +2774,7 @@ struct RotateDeleteSettingsView: View {
                         .frame(maxWidth: .infinity)
                     }
                 } else {
-                    Text("Select pages to delete from the thumbnail view above.")
+                    Text("Select pages to delete from the thumbnail view above.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2739,22 +2782,22 @@ struct RotateDeleteSettingsView: View {
                     // Quick select for delete
                     if totalPages > 0 {
                         HStack(spacing: 8) {
-                            Button("Select Odd") {
+                            Button("Select Odd".localized) {
                                 selectedPages = Set((1...totalPages).filter { $0 % 2 == 1 })
                             }
                             .buttonStyle(.bordered)
                             
-                            Button("Select Even") {
+                            Button("Select Even".localized) {
                                 selectedPages = Set((1...totalPages).filter { $0 % 2 == 0 })
                             }
                             .buttonStyle(.bordered)
                             
-                            Button("Select All") {
+                            Button("Select All".localized) {
                                 selectedPages = Set(1...totalPages)
                             }
                             .buttonStyle(.bordered)
                             
-                            Button("Clear") {
+                            Button("Clear".localized) {
                                 selectedPages = []
                             }
                             .buttonStyle(.bordered)
@@ -2768,10 +2811,11 @@ struct RotateDeleteSettingsView: View {
 }
 
 struct MergeSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     var body: some View {
-        GroupBox("Merge Settings") {
+        GroupBox("Merge Settings".localized) {
             VStack(spacing: 12) {
-                Text("Drag and drop files in the main list to reorder them before merging.")
+                Text("Drag and drop files in the main list to reorder them before merging.".localized)
                     .font(.system(size: 12))
                     .foregroundColor(Color(red: 148/255, green: 163/255, blue: 184/255))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2781,14 +2825,15 @@ struct MergeSettingsView: View {
 }
 
 struct ReorderSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var pageOrder: [Int]
     @State private var text: String = ""
     @State private var isEditing: Bool = false
     
     var body: some View {
-        GroupBox("Reorder Pages") {
+        GroupBox("Reorder Pages".localized) {
             VStack(spacing: 12) {
-                Text("Enter the new page order as comma-separated numbers.")
+                Text("Enter the new page order as comma-separated numbers.".localized)
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2818,7 +2863,7 @@ struct ReorderSettingsView: View {
                             pageOrder.reverse()
                         }
                     }) {
-                        Label("Reverse", systemImage: "arrow.up.arrow.down")
+                        Label("Reverse".localized, systemImage: "arrow.up.arrow.down")
                     }
                     .buttonStyle(.bordered)
                     
@@ -2827,7 +2872,7 @@ struct ReorderSettingsView: View {
                             pageOrder.sort()
                         }
                     }) {
-                        Label("Sort (1-N)", systemImage: "arrow.up")
+                        Label("Sort (1-N)".localized, systemImage: "arrow.up")
                     }
                     .buttonStyle(.bordered)
                     
@@ -2840,7 +2885,7 @@ struct ReorderSettingsView: View {
                                 pageOrder = odds + evens
                             }
                         }) {
-                            Label("Odd First", systemImage: "number")
+                            Label("Odd First".localized, systemImage: "number")
                         }
                         .buttonStyle(.bordered)
                         
@@ -2849,7 +2894,7 @@ struct ReorderSettingsView: View {
                                 pageOrder = Array(1...pageOrder.count)
                             }
                         }) {
-                            Label("Reset", systemImage: "arrow.counterclockwise")
+                            Label("Reset".localized, systemImage: "arrow.counterclockwise")
                         }
                         .buttonStyle(.bordered)
                     }
@@ -2859,7 +2904,7 @@ struct ReorderSettingsView: View {
                 HStack {
                     Image(systemName: "info.circle")
                         .foregroundColor(.blue)
-                    Text("Example: '3,1,2' outputs page 3 first, then page 1, then page 2.")
+                    Text("Example: '3,1,2' outputs page 3 first, then page 1, then page 2.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -2867,7 +2912,7 @@ struct ReorderSettingsView: View {
                 HStack {
                     Image(systemName: "hand.draw.fill")
                         .foregroundColor(.blue)
-                    Text("You can also reorder pages by dragging the thumbnails above.")
+                    Text("You can also reorder pages by dragging the thumbnails above.".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -2911,6 +2956,7 @@ struct ReorderSettingsView: View {
 }
 
 struct SecurityTabView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var securityMode: SecurityMode
     @Binding var watermarkText: String
     @Binding var watermarkOpacity: Double
@@ -2925,7 +2971,7 @@ struct SecurityTabView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                Picker("Security Mode", selection: $securityMode) {
+                Picker("Security Mode".localized, selection: $securityMode) {
                     ForEach(SecurityMode.allCases) { mode in
                         Text(mode.description).tag(mode)
                     }
@@ -2957,40 +3003,41 @@ struct SecurityTabView: View {
 }
 
 struct WatermarkSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var watermarkText: String
     @Binding var watermarkOpacity: Double
     @Binding var watermarkDiagonal: Bool
     @Binding var watermarkFontSize: Int
     
     var body: some View {
-        GroupBox("Watermark Settings") {
+        GroupBox("Watermark Settings".localized) {
             VStack(spacing: 12) {
                 HStack {
-                    Text("Text:")
+                    Text("Text:".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    TextField("Watermark text", text: $watermarkText)
+                    TextField("Watermark text".localized, text: $watermarkText)
                         .textFieldStyle(.roundedBorder)
                 }
                 
                 HStack {
-                    Text("Opacity: \(Int(watermarkOpacity * 100))%")
+                    Text(String(format: "Opacity: %lld%%".localized, Int(watermarkOpacity * 100)))
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Slider(value: $watermarkOpacity, in: 0.1...1.0)
                 }
                 
                 HStack {
-                    Text("Font Size:")
+                    Text("Font Size:".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Stepper("\(watermarkFontSize) pt", value: $watermarkFontSize, in: 12...120, step: 6)
                 }
                 
-                Toggle("Diagonal", isOn: $watermarkDiagonal)
+                Toggle("Diagonal".localized, isOn: $watermarkDiagonal)
                     .font(.caption)
                 
-                Text("Watermark will appear on all pages of the PDF.")
+                Text("Watermark will appear on all pages of the PDF.".localized)
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3000,6 +3047,7 @@ struct WatermarkSettingsView: View {
 }
 
 struct EncryptSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var encryptPassword: String
     @Binding var encryptConfirmPassword: String
     @Binding var encryptAllowPrinting: Bool
@@ -3010,33 +3058,33 @@ struct EncryptSettingsView: View {
     }
     
     var body: some View {
-        GroupBox("Encryption Settings") {
+        GroupBox("Encryption Settings".localized) {
             VStack(spacing: 12) {
-                SecureField("Password", text: $encryptPassword)
+                SecureField("Password".localized, text: $encryptPassword)
                     .textFieldStyle(.roundedBorder)
                 
-                SecureField("Confirm Password", text: $encryptConfirmPassword)
+                SecureField("Confirm Password".localized, text: $encryptConfirmPassword)
                     .textFieldStyle(.roundedBorder)
                 
                 if !encryptPassword.isEmpty && !passwordsMatch {
-                    Text("Passwords do not match")
+                    Text("Passwords do not match".localized)
                         .font(.caption)
                         .foregroundColor(.red)
                 }
                 
                 Divider()
                 
-                Text("Permissions")
+                Text("Permissions".localized)
                     .font(.caption)
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 
-                Toggle("Allow Printing", isOn: $encryptAllowPrinting)
+                Toggle("Allow Printing".localized, isOn: $encryptAllowPrinting)
                     .font(.caption)
-                Toggle("Allow Copying", isOn: $encryptAllowCopying)
+                Toggle("Allow Copying".localized, isOn: $encryptAllowCopying)
                     .font(.caption)
                 
-                Text("The password will be required to open the PDF.")
+                Text("The password will be required to open the PDF.".localized)
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3046,15 +3094,16 @@ struct EncryptSettingsView: View {
 }
 
 struct DecryptSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var decryptPassword: String
     
     var body: some View {
-        GroupBox("Decrypt Settings") {
+        GroupBox("Decrypt Settings".localized) {
             VStack(spacing: 12) {
-                SecureField("Enter PDF Password", text: $decryptPassword)
+                SecureField("Enter PDF Password".localized, text: $decryptPassword)
                     .textFieldStyle(.roundedBorder)
                 
-                Text("Enter the password of the protected PDF. The output will be an unprotected copy.")
+                Text("Enter the password of the protected PDF. The output will be an unprotected copy.".localized)
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3064,19 +3113,20 @@ struct DecryptSettingsView: View {
 }
 
 struct PageNumberSettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var pageNumberPosition: PageNumberPosition
     @Binding var pageNumberFontSize: Int
     @Binding var pageNumberStartFrom: Int
     @Binding var pageNumberFormat: PageNumberFormat
 
     var body: some View {
-        GroupBox("Page Numbering Settings") {
+        GroupBox("Page Numbering Settings".localized) {
             VStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Position:")
+                    Text("Position:".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Picker("Position", selection: $pageNumberPosition) {
+                    Picker("Position".localized, selection: $pageNumberPosition) {
                         ForEach(PageNumberPosition.allCases) { position in
                             Text(position.description).tag(position)
                         }
@@ -3086,10 +3136,10 @@ struct PageNumberSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Format:")
+                    Text("Format:".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Picker("Format", selection: $pageNumberFormat) {
+                    Picker("Format".localized, selection: $pageNumberFormat) {
                         ForEach(PageNumberFormat.allCases) { format in
                             Text(format.description).tag(format)
                         }
@@ -3099,20 +3149,20 @@ struct PageNumberSettingsView: View {
                 }
 
                 HStack {
-                    Text("Font Size:")
+                    Text("Font Size:".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Stepper("\(pageNumberFontSize) pt", value: $pageNumberFontSize, in: 8...24, step: 2)
                 }
 
                 HStack {
-                    Text("Start From:")
+                    Text("Start From:".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Stepper("Page \(pageNumberStartFrom)", value: $pageNumberStartFrom, in: 1...100)
+                    Stepper(String(format: "Page %lld".localized, pageNumberStartFrom), value: $pageNumberStartFrom, in: 1...100)
                 }
 
-                Text("Page numbers will be added to all pages of the PDF.")
+                Text("Page numbers will be added to all pages of the PDF.".localized)
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3130,8 +3180,8 @@ enum AdvancedMode: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var name: String {
         switch self {
-        case .repair: return "Repair & Sanitize"
-        case .pdfa: return "Convert to PDF/A"
+        case .repair: return "Repair & Sanitize".localized
+        case .pdfa: return "Convert to PDF/A".localized
         }
     }
     
@@ -3144,17 +3194,18 @@ enum AdvancedMode: Int, CaseIterable, Identifiable {
     
     var description: String {
         switch self {
-        case .repair: return "Fix corrupted files by rebuilding the PDF structure."
-        case .pdfa: return "Convert to PDF/A-2b standard for long-term preservation."
+        case .repair: return "Fix corrupted files by rebuilding the PDF structure.".localized
+        case .pdfa: return "PDF/A-2b ensures document appearance is preserved over time. This process will embed standard fonts.".localized
         }
     }
 }
 
 struct AdvancedToolsView: View {
+    @AppStorage("app_language") private var appLanguage = "en"
     @Binding var advancedMode: AdvancedMode
     
     var body: some View {
-        GroupBox("Advanced Tools") {
+        GroupBox("Advanced Tools".localized) {
             VStack(spacing: 16) {
                 HStack(spacing: 12) {
                     ForEach(AdvancedMode.allCases) { mode in
@@ -3189,7 +3240,7 @@ struct AdvancedToolsView: View {
                 if advancedMode == .pdfa {
                      HStack {
                          Image(systemName: "info.circle")
-                         Text("PDF/A-2b ensures document appearance is preserved over time. This process will embed standard fonts.")
+                         Text("PDF/A-2b ensures document appearance is preserved over time. This process will embed standard fonts.".localized)
                              .font(.caption)
                      }
                      .foregroundColor(.secondary)
