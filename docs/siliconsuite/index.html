@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silicon Suite - Premium macOS Utilities</title>
+    <meta name="description"
+        content="A collection of privacy-first, professional macOS utilities. GhostPDF, CleverGhost, PDFShuffle, and SteadyFlow.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script data-goatcounter="https://oguzumut.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+            color: #fff;
+        }
+
+        h1,
+        h2,
+        h3,
+        .brand-font {
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #fff 0%, #a5a5a5 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .suite-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .suite-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .app-icon {
+            box-shadow: 0 0 40px rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s ease;
+        }
+
+        .suite-card:hover .app-icon {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+
+<body class="antialiased min-h-screen flex flex-col selection:bg-white selection:text-black">
+
+    <!-- Navigation -->
+    <nav class="w-full py-6 px-6 max-w-7xl mx-auto flex justify-between items-center z-50">
+        <div class="flex items-center gap-2">
+            <div
+                class="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-100 to-gray-400 flex items-center justify-center text-black font-bold text-lg border border-white/20">
+                S</div>
+            <span class="text-xl font-bold tracking-tight brand-font">Silicon Suite</span>
+        </div>
+        <div class="flex gap-6">
+            <a href="mailto:ou.salman@icloud.com"
+                class="text-sm font-medium text-gray-400 hover:text-white transition">Contact</a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <main class="flex-grow flex flex-col justify-center items-center px-6 pt-20 pb-32 max-w-7xl mx-auto w-full">
+
+        <div class="text-center mb-24 max-w-3xl mx-auto">
+            <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
+                Crafted for <span class="gradient-text">macOS.</span>
+            </h1>
+            <p class="text-xl md:text-2xl text-gray-400 leading-relaxed font-light">
+                A suite of powerful, privacy-first native utilities. <br class="hidden md:block">No subscriptions. No
+                tracking. Just software that works.
+            </p>
+        </div>
+
+        <!-- App Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl">
+
+            <!-- GhostPDF+ -->
+            <a href="/GhostPDF-Bundle/"
+                class="suite-card group rounded-3xl p-8 relative overflow-hidden flex flex-col min-h-[300px]">
+                <div
+                    class="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2 group-hover:bg-blue-500/30 transition-colors duration-500">
+                </div>
+
+                <div class="relative z-10 flex-grow">
+                    <img src="./assets/ghostpdf.jpg" alt="GhostPDF+ Icon"
+                        class="app-icon w-20 h-20 rounded-[1.25rem] mb-6 border border-white/10">
+                    <h2 class="text-3xl font-bold mb-3">GhostPDF+</h2>
+                    <p class="text-gray-400 text-lg leading-relaxed">
+                        The ultimate offline PDF compressor. Shrink files, not privacy. Powered by Ghostscript.
+                    </p>
+                </div>
+                <div
+                    class="relative z-10 mt-8 flex items-center text-blue-400 font-semibold group-hover:translate-x-1 transition-transform">
+                    View App <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- CleverGhost -->
+            <a href="/CleverGhost/"
+                class="suite-card group rounded-3xl p-8 relative overflow-hidden flex flex-col min-h-[300px]">
+                <div
+                    class="absolute top-0 right-0 w-64 h-64 bg-purple-500/20 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2 group-hover:bg-purple-500/30 transition-colors duration-500">
+                </div>
+
+                <div class="relative z-10 flex-grow">
+                    <img src="./assets/cleverghost.jpg" alt="CleverGhost Icon"
+                        class="app-icon w-20 h-20 rounded-[1.25rem] mb-6 border border-white/10">
+                    <h2 class="text-3xl font-bold mb-3">CleverGhost</h2>
+                    <p class="text-gray-400 text-lg leading-relaxed">
+                        On-device AI document analysis. Chat with your PDFs locally, securely, and intelligently.
+                    </p>
+                </div>
+                <div
+                    class="relative z-10 mt-8 flex items-center text-purple-400 font-semibold group-hover:translate-x-1 transition-transform">
+                    View App <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- PDFShuffle -->
+            <a href="/PDFShuffle/"
+                class="suite-card group rounded-3xl p-8 relative overflow-hidden flex flex-col min-h-[300px]">
+                <div
+                    class="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2 group-hover:bg-indigo-500/30 transition-colors duration-500">
+                </div>
+
+                <div class="relative z-10 flex-grow">
+                    <img src="./assets/pdfshuffle.png" alt="PDFShuffle Icon"
+                        class="app-icon w-20 h-20 rounded-[1.25rem] mb-6 border border-white/10">
+                    <h2 class="text-3xl font-bold mb-3">PDFShuffle</h2>
+                    <p class="text-gray-400 text-lg leading-relaxed">
+                        Visual page management. Drag, drop, merge, and split PDF pages with a beautiful native
+                        interface.
+                    </p>
+                </div>
+                <div
+                    class="relative z-10 mt-8 flex items-center text-indigo-400 font-semibold group-hover:translate-x-1 transition-transform">
+                    View App <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- SteadyFlow -->
+            <a href="/SteadyFlow/"
+                class="suite-card group rounded-3xl p-8 relative overflow-hidden flex flex-col min-h-[300px]">
+                <div
+                    class="absolute top-0 right-0 w-64 h-64 bg-cyan-500/20 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2 group-hover:bg-cyan-500/30 transition-colors duration-500">
+                </div>
+
+                <div class="relative z-10 flex-grow">
+                    <img src="./assets/steadyflow.jpg" alt="SteadyFlow Icon"
+                        class="app-icon w-20 h-20 rounded-[1.25rem] mb-6 border border-white/10">
+                    <h2 class="text-3xl font-bold mb-3">SteadyFlow</h2>
+                    <p class="text-gray-400 text-lg leading-relaxed">
+                        Cinematic Intelligence for Your Images. <br><br>
+                        Drop photos. Pick a vibe. Your video cuts to the beat—automatically. No timeline, no editing,
+                        just AI-powered cinema on Apple Silicon.
+                    </p>
+                </div>
+                <div
+                    class="relative z-10 mt-8 flex items-center text-cyan-400 font-semibold group-hover:translate-x-1 transition-transform">
+                    View App <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                    </svg>
+                </div>
+            </a>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-12 border-t border-white/10 mt-auto">
+        <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p class="text-gray-500 text-sm">© 2026 Lale Taneri. All rights reserved.</p>
+            <a href="https://www.nxgntools.com/tools/ghostpdf?utm_source=ghostpdf" target="_blank" rel="noopener"
+                style="display: inline-block; width: auto;">
+                <img src="https://www.nxgntools.com/api/embed/ghostpdf?type=LAUNCHING_SOON_ON"
+                    alt="NextGen Tools Badge - The #1 AI Tools Directory & Launch Platform"
+                    style="height: 48px; width: auto;" />
+            </a>
+            <div class="flex items-center gap-6 text-sm">
+                <a href="#" class="text-gray-500 hover:text-white transition">Privacy</a>
+                <a href="mailto:ou.salman@icloud.com" class="text-gray-500 hover:text-white transition">Contact</a>
+                <a href="#" class="text-gray-500 hover:text-white transition">Twitter (X)</a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+
+</html>
